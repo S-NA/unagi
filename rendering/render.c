@@ -329,6 +329,8 @@ _render_init_root_picture(void)
       fatal("Can't get PictFormat of root window");
       return false;
     }
+  else
+    _render_pict_formats_cookie.sequence = 0;
 
   /* Used to be computed at each creation of the Window alpha Picture,
      but seems to be rather costly (as per callgrind) */
@@ -416,7 +418,12 @@ render_reset_background(void)
   /* Send requests to get the root window background pixmap */
   window_get_root_background_pixmap();
 
-  _render_init_root_background();
+  /* Calling render_init_root_background() is not enough when the Root
+     Window is resized as the Root Picture must be recreated as well */
+  _render_pict_formats_cookie =
+    xcb_render_query_pict_formats_unchecked(globalconf.connection);
+
+  _render_init_root_picture();
 }
 
 /** Create the alpha Picture associated  with a window by only filling
