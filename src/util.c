@@ -76,6 +76,7 @@ void
 #ifdef __DEBUG__
 _debug(const int line, const char *func, const char *fmt, ...)
 {
+  fprintf(stderr, "%.6f: ", ev_time());
   DO_DISPLAY_MESSAGE("DEBUG")
 }
 #else
