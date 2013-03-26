@@ -422,6 +422,7 @@ display_set_screen_refresh_rate(xcb_randr_get_screen_info_cookie_t cookie)
           rate = (float) MINIMUM_REPAINT_INTERVAL;
         }
 
+      debug("Set refresh rate interval to %.3fs", rate);
       globalconf.refresh_rate_interval = rate;
     }
   else
