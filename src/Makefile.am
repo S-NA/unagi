@@ -1,4 +1,4 @@
-INCLUDES = $(UNAGI_CFLAGS) -I$(top_srcdir)/include
+INCLUDES = -I$(top_srcdir)/include $(UNAGI_CFLAGS)
 unagi_LDADD = $(UNAGI_LIBS) -ldl
 unagi_LDFLAGS = -rdynamic
 bin_PROGRAMS = unagi
