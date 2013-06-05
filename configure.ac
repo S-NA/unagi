@@ -41,11 +41,21 @@ AC_SUBST(UNAGI_REQUIRES)
 # Checks for libraries
 PKG_CHECK_MODULES(UNAGI, $UNAGI_REQUIRES)
 
+# Check for libev (no pkg-config in Debian but Fedora provides it)
+PKG_CHECK_EXISTS([libev],
+                 [PKG_CHECK_MODULES(LIBEV,
+                                    [ libev ],
+                                    [ have_pkgconfig_libev="yes" ])],
+                 [AC_SEARCH_LIBS([ev_default_loop], [ev], [],
+                                 [AC_MSG_ERROR([Require libev])])])
+
+if test "x$have_pkgconfig_libev" = "xyes"; then
+	UNAGI_CFLAGS="$UNAGI_CFLAGS $LIBEV_CFLAGS"
+	UNAGI_LIBS="$UNAGI_LIBS $LIBEV_LIBS"
+fi
+
 AC_SUBST(UNAGI_CFLAGS)
 AC_SUBST(UNAGI_LIBS)
-
-# Check for libev (no pkg-config)
-AC_SEARCH_LIBS([ev_default_loop], [ev], [], [AC_MSG_ERROR([Require libev])])
 
 PKG_CHECK_MODULES(RENDER_BACKEND, [
 	  xcb-renderutil
