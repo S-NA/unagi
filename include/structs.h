@@ -100,6 +100,7 @@ typedef struct _conf_t
   util_itree_t *windows_itree;
   /** Damaged region which must be repainted */
   xcb_xfixes_region_t damaged;
+  bool force_repaint;
   /** Confuse configuration file options */
   cfg_t *cfg;
   /** List of KeySyms, only updated when receiving a KeyboardMapping event */

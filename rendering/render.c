@@ -33,6 +33,8 @@
 #include "plugin.h"
 #include "util.h"
 
+#define _DOUBLE_TO_FIXED(f) ((xcb_render_fixed_t) ((f) * 65536))
+
 /** Global alpha Pictures cache. This avoids creating an alpha Picture
     for each window */
 typedef struct __render_alpha_picture_t
@@ -582,7 +584,7 @@ render_paint_window(window_t *window)
   /* If  there is  no window  Pixmap, do  nothing.  This  might happen
      because  the window  is  not visible  yet  (CreateNotify, then  a
      ConfigureNotify but not a MapNotify yet) */
-  if(window->pixmap == XCB_NONE)
+  if(window->pixmap == XCB_NONE && !window->is_transformed)
     return;
 
   /* Allocate memory specific to the rendering backend */
@@ -616,37 +618,58 @@ render_paint_window(window_t *window)
   uint8_t render_composite_op = XCB_RENDER_PICT_OP_SRC;
   xcb_render_picture_t alpha_picture = XCB_NONE;
 
-  if(render_window->is_argb)
-    render_composite_op = XCB_RENDER_PICT_OP_OVER;
-  if(_render_conf.opacity_plugin &&
-          _render_conf.opacity_plugin->vtable->window_get_opacity)
+  /* TODO: Handle properly non-rectangular windows? */
+  if(!window->is_transformed)
     {
-      alpha_picture =
-        _render_get_window_alpha_picture(render_window,
-                                         (*_render_conf.opacity_plugin->vtable->window_get_opacity)(window));
-
-      if(alpha_picture != XCB_NONE)
+      if(render_window->is_argb)
         render_composite_op = XCB_RENDER_PICT_OP_OVER;
+      if(_render_conf.opacity_plugin &&
+         _render_conf.opacity_plugin->vtable->window_get_opacity)
+        {
+          alpha_picture =
+            _render_get_window_alpha_picture(render_window,
+                                             (*_render_conf.opacity_plugin->vtable->window_get_opacity)(window));
+
+          if(alpha_picture != XCB_NONE)
+            render_composite_op = XCB_RENDER_PICT_OP_OVER;
+        }
+
+      /* For  non-rectangular  Windows, clip  the  Window  Picture to  its
+         shaped Region to paint  them properly (otherwise for applications
+         such  as  xeyes,  garbage  pixels are  shown  as  RenderComposite
+         expects a rectangular area)
+
+         \todo: Should ShapeNotify be handled as well?
+      */
+      if(!window_is_rectangular(window))
+        {
+          xcb_xfixes_region_t shape_region = window_get_region(window, false, false);
+
+          xcb_xfixes_set_picture_clip_region(globalconf.connection,
+                                             render_window->picture,
+                                             shape_region,
+                                             window->geometry->border_width,
+                                             window->geometry->border_width);
+
+          xcb_xfixes_destroy_region(globalconf.connection, shape_region);
+        }
     }
-
-  /* For  non-rectangular  Windows, clip  the  Window  Picture to  its
-     shaped Region to paint  them properly (otherwise for applications
-     such  as  xeyes,  garbage  pixels are  shown  as  RenderComposite
-     expects a rectangular area)
-
-     \todo: Should ShapeNotify be handled as well?
-  */
-  if(!window_is_rectangular(window))
+  else
     {
-      xcb_xfixes_region_t shape_region = window_get_region(window, false, false);
+      xcb_render_transform_t render_transform = {
+        .matrix11 = _DOUBLE_TO_FIXED(window->transform_matrix[0][0]),
+        .matrix12 = _DOUBLE_TO_FIXED(window->transform_matrix[0][1]),
+        .matrix13 = _DOUBLE_TO_FIXED(window->transform_matrix[0][2]),
+        .matrix21 = _DOUBLE_TO_FIXED(window->transform_matrix[1][0]),
+        .matrix22 = _DOUBLE_TO_FIXED(window->transform_matrix[1][1]),
+        .matrix23 = _DOUBLE_TO_FIXED(window->transform_matrix[1][2]),
+        .matrix31 = _DOUBLE_TO_FIXED(window->transform_matrix[2][0]),
+        .matrix32 = _DOUBLE_TO_FIXED(window->transform_matrix[2][1]),
+        .matrix33 = _DOUBLE_TO_FIXED(window->transform_matrix[2][2])};
 
-      xcb_xfixes_set_picture_clip_region(globalconf.connection,
-                                         render_window->picture,
-                                         shape_region,
-                                         window->geometry->border_width,
-                                         window->geometry->border_width);
-
-      xcb_xfixes_destroy_region(globalconf.connection, shape_region);
+      xcb_render_set_picture_transform(globalconf.connection,
+                                       render_window->picture,
+                                       render_transform);
     }
 
   xcb_render_composite(globalconf.connection,
@@ -750,7 +773,7 @@ render_free_window(window_t *window)
   if(render_window && render_window->alpha_picture)
     _render_unref_window_alpha_picture(render_window);
 
-  free(render_window);
+  util_free(&(window->rendering));
 }
 
 /** Called on dlclose()  and free all the resources  allocated by this

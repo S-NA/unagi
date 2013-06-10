@@ -49,6 +49,8 @@ typedef struct _window_t
   float damaged_ratio;
   short damage_notify_counter;
   xcb_pixmap_t pixmap;
+  bool is_transformed;
+  double transform_matrix[4][4];
   void *rendering;
   struct _window_t *next;
 } window_t;

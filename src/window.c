@@ -422,8 +422,8 @@ window_get_invisible_window_pixmap(window_t *window)
 void
 window_get_invisible_window_pixmap_finalise(window_t *window)
 {
-  xcb_unmap_window(globalconf.connection, window->id);
   window_set_override_redirect(window, false);
+  xcb_unmap_window(globalconf.connection, window->id);
 }
 
 typedef struct

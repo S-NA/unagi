@@ -192,21 +192,6 @@ _expose_free_slots(_expose_window_slot_t **slots)
 {
   for(_expose_window_slot_t *slot = *slots; slot && slot->window; slot++)
     {
-      if(slot->scale_window.image)
-	xcb_image_destroy(slot->scale_window.image);
-
-      if(slot->scale_window.gc != XCB_NONE)
-	xcb_free_gc(globalconf.connection, slot->scale_window.gc);
-
-      /* Free the scaled  window Pixmap only if it's  not the original
-	 window one */
-      if(slot->scale_window.window->pixmap != XCB_NONE &&
-	 slot->scale_window.window->geometry->width != slot->window->geometry->width &&
-	 slot->scale_window.window->geometry->height != slot->window->geometry->height)
-	xcb_free_pixmap(globalconf.connection, slot->scale_window.window->pixmap);
-
-      (*globalconf.rendering->free_window)(slot->scale_window.window);
-
       free(slot->scale_window.window->geometry);
       free(slot->scale_window.window);
     }
@@ -486,186 +471,6 @@ _expose_assign_windows_to_slots(const uint32_t nwindows,
     }
 }
 
-/** Draw the original window border on the scaled window Image
- *
- * \param scale_window_image The scaled window Image
- * \param scale_window_width The scaled window width including border
- * \param scale_window_height The scaled window height including border
- * \param window_image The original window Image
- * \param border_width Window border with
- */
-static void
-_expose_draw_scale_window_border(xcb_image_t *scale_window_image,
-				 const uint16_t scale_window_width,
-				 const uint16_t scale_window_height,
-				 xcb_image_t *window_image,
-				 const uint16_t border_width)
-{
-  const uint32_t border_pixel = xcb_image_get_pixel(window_image, 0, 0);
-
-  for(uint16_t x = 0; x < scale_window_width; x++)
-    {
-      /* Draw horizontal top border */
-      for(uint16_t y = 0; y < border_width; y++)
-	xcb_image_put_pixel(scale_window_image, x, y, border_pixel);
-
-      /* Draw horizontal bottom border */
-      for(uint16_t y = (uint16_t) (scale_window_height - 1); y >= scale_window_height - border_width; y--)
-	xcb_image_put_pixel(scale_window_image, x, y, border_pixel);
-    }
-      
-  for(uint16_t y = 0; y < scale_window_height; y++)
-    {
-      /* Draw left vertical border */
-      for(uint16_t x = 0; x < border_width; x++)
-	xcb_image_put_pixel(scale_window_image, x, y, border_pixel);
-
-      /* Draw right vertival border */
-      for(uint16_t x = (uint16_t) (scale_window_width - 1); x >= scale_window_width - border_width; x--)
-	xcb_image_put_pixel(scale_window_image, x, y, border_pixel);
-    }
-}
-
-/** Scale the window content of the given Image according to the given
- *  ratio. It implements a filter similar to Gauss (but with different
- *  weights) which  takes the pixels  arounds and merge  them together
- *  with a weight depending on their position
- *
- * \param scale_window_image The scaled window Image
- * \param scale_window_width The scaled window width including border
- * \param scale_window_height The scaled window height including border
- * \param ratio_rescale The invert of the rescaling ratio
- * \param window_image The original window Image
- * \param window_width The original window width including border
- * \param window_height The original window height including border
- * \param border_width Window border with
- */
-static void
-_expose_draw_scale_window_content(xcb_image_t *scale_window_image,
-				  const uint16_t scale_window_width,
-				  const uint16_t scale_window_height,
-				  const double ratio_rescale,
-				  xcb_image_t *window_image,
-				  const uint16_t window_width,
-				  const uint16_t window_height,
-				  const uint16_t border_width)
-{
-  uint32_t window_pixels[window_width][window_height];
-
-  /* Get the pixel for optimisation purpose */
-  for(uint16_t x = 0; x < window_width; x++)
-    for(uint16_t y = 0; y < window_height; y++)
-      window_pixels[x][y] = xcb_image_get_pixel(window_image, x, y);
-
-  int16_t ys, xs, ymin, ymax, xmin, xmax;
-
-  const uint16_t scale_content_width = (uint16_t) (scale_window_width - border_width);
-  const uint16_t scale_content_height = (uint16_t) (scale_window_height - border_width);
-
-  const bool do_pixels_around = (1.0 / ratio_rescale) <= 0.90;
-
-  for(uint16_t y_scale = border_width; y_scale < scale_content_height; y_scale++)
-    {
-      ys = (int16_t) trunc((double) y_scale * ratio_rescale);
-
-      /* Compute the minimum and maxmimum y depending on the pixel position */
-      ymin = (int16_t) (y_scale == border_width || !do_pixels_around ? ys : ys - 1);
-      ymax = (int16_t) (y_scale == scale_content_height - 1 || !do_pixels_around ? ys : ys + 1);
-
-      for(uint16_t x_scale = border_width; x_scale < scale_content_width; x_scale++)
-	{
-	  uint32_t moy[3] = { 0, 0, 0 };
-
-	  xs = (int16_t) trunc((double) x_scale * ratio_rescale);
-	  xmin = (int16_t) (x_scale == border_width || !do_pixels_around ? xs : xs - 1);
-	  xmax = (int16_t) (x_scale == scale_content_width - 1 || !do_pixels_around ? xs : xs + 1);
-
-	  uint32_t weight = 0;
-
-	  for(int16_t y = ymin, y_gaussian = (int16_t) (ymin - ys + 1); y <= ymax; y++, y_gaussian++)
-	    for(int16_t x = xmin, x_gaussian = (int16_t) (xmin - xs + 1); x <= xmax; x++, x_gaussian++)
-	      {
-		moy[2] += GET_R(window_pixels[x][y], _expose_scale_weights[x_gaussian][y_gaussian]);
-		moy[1] += GET_G(window_pixels[x][y], _expose_scale_weights[x_gaussian][y_gaussian]);
-		moy[0] += GET_B(window_pixels[x][y], _expose_scale_weights[x_gaussian][y_gaussian]);
-
-		weight += _expose_scale_weights[x_gaussian][y_gaussian];
-	      }
-
-	  xcb_image_put_pixel(scale_window_image, x_scale, y_scale,
-			      SET_PIXEL(moy[2], moy[1], moy[0], weight));
-	}
-    }
-}
-
-/** Perform window  rescaling and draw  the borders too which  are not
- *  rescaled at all
- *
- * \param scale_window_image The scale window image
- * \param scale_window_width The scale window width including border
- * \param scale_window_height The scale window height including border
- * \param window_image The original window image
- * \param window_width The original window width including border
- * \param window_height The original window height including border
- * \param border_width The border width
- */
-static void
-_expose_do_scale_window(xcb_image_t *scale_window_image,
-			const uint16_t scale_window_width,
-			const uint16_t scale_window_height,
-			xcb_image_t *window_image,
-			const uint16_t window_width,
-			const uint16_t window_height,
-			const uint16_t border_width)
-{
-  _expose_draw_scale_window_content(scale_window_image, scale_window_width, scale_window_height,
-				    (double) window_width / (double) scale_window_width,
-				    window_image, window_width, window_height, border_width);
-
-  /* A window may have no border at all */
-  if(border_width)
-    _expose_draw_scale_window_border(scale_window_image, scale_window_width,
-				     scale_window_height, window_image,
-				     border_width);
-}
-
-/** Update the rescaled window Pixmap
- *
- * \param scale_window The scale window object
- * \param scale_window_width The scale window width including border
- * \param scale_window_height The scale window height including border
- * \param window The original window object
- * \param window_width The original window width including border
- * \param window_height The original window height including border
- */
-static void
-_expose_update_scale_pixmap(_expose_scale_window_t *scale_window,
-			    const uint16_t scale_window_width,
-			    const uint16_t scale_window_height,
-			    const window_t *window,
-			    const uint16_t window_width,
-			    const uint16_t window_height)
-{
-  /* Create the image associated with the original window */
-  xcb_image_t *window_image = xcb_image_get(globalconf.connection,
-					    window->pixmap,
-					    0, 0,
-					    window_width,
-					    window_height,
-					    UINT32_MAX, XCB_IMAGE_FORMAT_Z_PIXMAP);
-
-  _expose_do_scale_window(scale_window->image, scale_window_width, scale_window_height,
-			  window_image, window_width, window_height,
-			  window->geometry->border_width);
-
-  xcb_image_put(globalconf.connection, scale_window->window->pixmap,
-		scale_window->gc, scale_window->image, 0, 0, 0);
-
-  xcb_image_destroy(window_image);
-
-  scale_window->window->damaged = true;
-}
-
 /** Prepare the rescaled windows which  are going to be painted on the
  *  screen  by creating  the rescale  window  image and  then put  the
  *  pixels in it from the original window
@@ -688,6 +493,7 @@ _expose_prepare_windows(_expose_window_slot_t *slots)
 	scale_window_prev->next = slot->scale_window.window;
 
       scale_window_prev = slot->scale_window.window;
+      slot->scale_window.window->id = slot->window->id;
 
       /* The scale window coordinates are the slot ones */
       slot->scale_window.window->geometry = calloc(1, sizeof(xcb_get_geometry_reply_t));
@@ -700,15 +506,20 @@ _expose_prepare_windows(_expose_window_slot_t *slots)
       const uint16_t window_width = window_width_with_border(slot->window->geometry);
       const uint16_t window_height = window_height_with_border(slot->window->geometry);
 
+      slot->scale_window.window->is_transformed = true;
+      memset(slot->scale_window.window->transform_matrix, 0, 16);
+      slot->scale_window.window->transform_matrix[0][0] = 1;
+      slot->scale_window.window->transform_matrix[1][1] = 1;
+      slot->scale_window.window->damaged = true;
+
       /* If the window does not need to be rescaled, just ignore it */
       if(!_expose_window_need_rescaling(&slot->extents, window_width, window_height))
 	{
 	  slot->scale_window.window->geometry->width = slot->window->geometry->width;
 	  slot->scale_window.window->geometry->height = slot->window->geometry->height;
-	  slot->scale_window.window->pixmap = slot->window->pixmap;
-	  slot->scale_window.window->damaged = true;
+          slot->scale_window.window->transform_matrix[2][2] = 1;
 
-	  debug("Don't scale %jx", (uintmax_t) slot->window->id);
+	  debug("No need to scale %jx", (uintmax_t) slot->window->id);
 	  continue;
 	}
 
@@ -727,37 +538,8 @@ _expose_prepare_windows(_expose_window_slot_t *slots)
       slot->scale_window.window->geometry->height = (uint16_t)
 	floorf(ratio * (float) slot->window->geometry->height);
 
-      /* The geometry width and height never include the border width */
-      const uint16_t scale_window_width =
-	window_width_with_border(slot->scale_window.window->geometry);
-
-      const uint16_t scale_window_height = 
-	window_height_with_border(slot->scale_window.window->geometry);
-
-      /* Create the image associated with the rescaled window */
-      slot->scale_window.image = xcb_image_create_native(globalconf.connection,
-							 scale_window_width,
-							 scale_window_height,
-							 XCB_IMAGE_FORMAT_Z_PIXMAP,
-							 24, 0, 0, 0);
-
-      /* Create the rescaled window Pixmap and put the image in it */
-      slot->scale_window.window->pixmap = xcb_generate_id(globalconf.connection);
-
-      xcb_create_pixmap(globalconf.connection, 24,
-			slot->scale_window.window->pixmap,
-			globalconf.screen->root,
-			scale_window_width,
-			scale_window_height);
-
-      slot->scale_window.gc = xcb_generate_id(globalconf.connection);
-
-      xcb_create_gc(globalconf.connection, slot->scale_window.gc,
-		    slot->scale_window.window->pixmap, 0, NULL);
-
-      _expose_update_scale_pixmap(&slot->scale_window, scale_window_width,
-				  scale_window_height, slot->window,
-				  window_width, window_height);
+      slot->scale_window.window->transform_matrix[2][2] = ratio;
+      slot->scale_window.window->rendering = slot->window->rendering;
     }
 
 #ifdef __DEBUG__
@@ -850,16 +632,12 @@ _expose_plugin_enable(const uint32_t nwindows)
       warn("Can't grab the pointer and/or the keyboard");
       _expose_free_slots(&new_slots);
     }
-  else
-    {
-      /* The plugin is now enabled, so paint the screen */
-      /* TODO-PERF: globalconf.do_repaint = true; */
-      ;
-    }
 
   free(grab_pointer_reply);
   free(grab_keyboard_reply);
 
+  /* TODO: Really bad from a performance point of view */
+  globalconf.force_repaint = true;
   return new_slots;
 }
 
@@ -874,8 +652,12 @@ _expose_plugin_disable(_expose_window_slot_t *slots)
   /* Unmap the  window which were  previously mapped and  also restore
      override redirect */
   for(_expose_window_slot_t *slot = slots; slot && slot->window; slot++)
-    if(slot->scale_window.was_unmapped)
-      window_get_invisible_window_pixmap_finalise(slot->window);
+    {
+      if(slot->scale_window.was_unmapped)
+        window_get_invisible_window_pixmap_finalise(slot->window);
+
+      (*globalconf.rendering->free_window)(slot->window);
+    }
 
   /* Now ungrab both the keyboard and the pointer */
   xcb_ungrab_keyboard(globalconf.connection, XCB_CURRENT_TIME);
@@ -883,7 +665,8 @@ _expose_plugin_disable(_expose_window_slot_t *slots)
 
   /* Force repaint of the screen as the plugin is now disabled */
   _expose_global.enabled = false;
-  /* TODO-PERF: globalconf.do_repaint = true; */
+  _expose_free_slots(&_expose_global.slots);
+  globalconf.force_repaint = true;
 }
 
 /** When receiving a KeyRelease  event, just enable/disable the plugin
@@ -914,7 +697,7 @@ expose_event_handle_key_release(xcb_key_release_event_t *event,
 	  _expose_global.slots = _expose_plugin_enable(nwindows);
 
 	  if(!_expose_global.slots)
-	    warn("Couldn't create the slots");
+	    warn("Couldn't create the slots: Not enabled");
 	  else
 	    _expose_global.enabled = true;
 	}
@@ -1018,19 +801,9 @@ expose_render_windows(void)
     return NULL;
 
   for(_expose_window_slot_t *slot = _expose_global.slots; slot && slot->window; slot++)
-    {
-      const uint16_t window_width = window_width_with_border(slot->window->geometry);
-      const uint16_t window_height = window_height_with_border(slot->window->geometry);
+    slot->scale_window.window->damaged = true;
 
-      if(_expose_window_need_rescaling(&slot->extents, window_width, window_height))
-	_expose_update_scale_pixmap(&slot->scale_window,
-				    window_width_with_border(slot->scale_window.window->geometry),
-				    window_height_with_border(slot->scale_window.window->geometry),
-				    slot->window, window_width, window_height);
-      else
-	slot->scale_window.window->damaged = true;
-    }
-
+  globalconf.force_repaint = true;
   return _expose_global.slots[0].scale_window.window;
 }
 

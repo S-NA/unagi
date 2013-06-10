@@ -397,8 +397,11 @@ display_add_damaged_region(xcb_xfixes_region_t *region,
 void
 display_reset_damaged(void)
 {
-  xcb_xfixes_destroy_region(globalconf.connection, globalconf.damaged);
-  globalconf.damaged = XCB_NONE;
+  if(globalconf.damaged)
+    {
+      xcb_xfixes_destroy_region(globalconf.connection, globalconf.damaged);
+      globalconf.damaged = XCB_NONE;
+    }
 }
 
 /** Set the screen refresh rate, necessary to calculate the interval
