@@ -680,10 +680,8 @@ render_paint_window(window_t *window)
 		       0, 0, 0, 0,
 		       window->geometry->x,
 		       window->geometry->y,
-		       (uint16_t) (window->geometry->width +
-                                   window->geometry->border_width * 2),
-		       (uint16_t) (window->geometry->height +
-                                   window->geometry->border_width * 2));
+		       window_width_with_border(window->geometry),
+		       window_height_with_border(window->geometry));
 }
 
 /** Routine to  paint everything on  the root Picture, it  just paints
