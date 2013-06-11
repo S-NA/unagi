@@ -499,7 +499,8 @@ _expose_prepare_windows(_expose_window_slot_t *slots)
       slot->scale_window.window->geometry = calloc(1, sizeof(xcb_get_geometry_reply_t));
       slot->scale_window.window->geometry->x = slot->extents.x;
       slot->scale_window.window->geometry->y = slot->extents.y;
-      slot->scale_window.window->geometry->border_width = slot->window->geometry->border_width;
+      /* Border width is always equals to 0 as it is scaled anyway */
+      slot->scale_window.window->geometry->border_width = 0;
 
       slot->scale_window.window->attributes = slot->window->attributes;
 
@@ -536,10 +537,10 @@ _expose_prepare_windows(_expose_window_slot_t *slots)
 	ratio = (float) slot->extents.height / (float) window_height;
 
       slot->scale_window.window->geometry->width = (uint16_t)
-	floorf(ratio * (float) slot->window->geometry->width);
+	floorf(ratio * (float) window_width);
 
       slot->scale_window.window->geometry->height = (uint16_t)
-	floorf(ratio * (float) slot->window->geometry->height);
+	floorf(ratio * (float) window_height);
 
       slot->scale_window.window->transform_matrix[2][2] = ratio;
       slot->scale_window.window->rendering = slot->window->rendering;
