@@ -510,6 +510,9 @@ _expose_prepare_windows(_expose_window_slot_t *slots)
       memset(slot->scale_window.window->transform_matrix, 0, 16);
       slot->scale_window.window->transform_matrix[0][0] = 1;
       slot->scale_window.window->transform_matrix[1][1] = 1;
+      /* The Pixmap is needed for previously unmapped windows to
+         create the Picture for example with Render */
+      slot->scale_window.window->pixmap = slot->window->pixmap;
       slot->scale_window.window->damaged = true;
 
       /* If the window does not need to be rescaled, just ignore it */

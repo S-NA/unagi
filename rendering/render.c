@@ -584,7 +584,7 @@ render_paint_window(window_t *window)
   /* If  there is  no window  Pixmap, do  nothing.  This  might happen
      because  the window  is  not visible  yet  (CreateNotify, then  a
      ConfigureNotify but not a MapNotify yet) */
-  if(window->pixmap == XCB_NONE && !window->is_transformed)
+  if(window->pixmap == XCB_NONE)
     return;
 
   /* Allocate memory specific to the rendering backend */
