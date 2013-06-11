@@ -36,6 +36,10 @@
 
 #define WINDOW_FULLY_DAMAGED_RATIO 0.9
 
+#define WINDOW_TRANSFORM_STATUS_NONE 0
+#define WINDOW_TRANSFORM_STATUS_REQUIRED 1
+#define WINDOW_TRANSFORM_STATUS_DONE 2
+
 typedef struct _window_t
 {
   xcb_window_t id;
@@ -49,7 +53,7 @@ typedef struct _window_t
   float damaged_ratio;
   short damage_notify_counter;
   xcb_pixmap_t pixmap;
-  bool is_transformed;
+  int transform_status;
   double transform_matrix[4][4];
   void *rendering;
   struct _window_t *next;

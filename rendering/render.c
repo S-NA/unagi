@@ -619,8 +619,9 @@ render_paint_window(window_t *window)
   xcb_render_picture_t alpha_picture = XCB_NONE;
 
   /* TODO: Handle properly non-rectangular windows? */
-  if(!window->is_transformed)
+  switch(window->transform_status)
     {
+    case WINDOW_TRANSFORM_STATUS_NONE:
       if(render_window->is_argb)
         render_composite_op = XCB_RENDER_PICT_OP_OVER;
       if(_render_conf.opacity_plugin &&
@@ -653,23 +654,35 @@ render_paint_window(window_t *window)
 
           xcb_xfixes_destroy_region(globalconf.connection, shape_region);
         }
-    }
-  else
-    {
-      xcb_render_transform_t render_transform = {
-        .matrix11 = _DOUBLE_TO_FIXED(window->transform_matrix[0][0]),
-        .matrix12 = _DOUBLE_TO_FIXED(window->transform_matrix[0][1]),
-        .matrix13 = _DOUBLE_TO_FIXED(window->transform_matrix[0][2]),
-        .matrix21 = _DOUBLE_TO_FIXED(window->transform_matrix[1][0]),
-        .matrix22 = _DOUBLE_TO_FIXED(window->transform_matrix[1][1]),
-        .matrix23 = _DOUBLE_TO_FIXED(window->transform_matrix[1][2]),
-        .matrix31 = _DOUBLE_TO_FIXED(window->transform_matrix[2][0]),
-        .matrix32 = _DOUBLE_TO_FIXED(window->transform_matrix[2][1]),
-        .matrix33 = _DOUBLE_TO_FIXED(window->transform_matrix[2][2])};
 
-      xcb_render_set_picture_transform(globalconf.connection,
-                                       render_window->picture,
-                                       render_transform);
+      break;
+
+    case WINDOW_TRANSFORM_STATUS_REQUIRED:
+      {
+        xcb_render_transform_t render_transform = {
+          .matrix11 = _DOUBLE_TO_FIXED(window->transform_matrix[0][0]),
+          .matrix12 = _DOUBLE_TO_FIXED(window->transform_matrix[0][1]),
+          .matrix13 = _DOUBLE_TO_FIXED(window->transform_matrix[0][2]),
+          .matrix21 = _DOUBLE_TO_FIXED(window->transform_matrix[1][0]),
+          .matrix22 = _DOUBLE_TO_FIXED(window->transform_matrix[1][1]),
+          .matrix23 = _DOUBLE_TO_FIXED(window->transform_matrix[1][2]),
+          .matrix31 = _DOUBLE_TO_FIXED(window->transform_matrix[2][0]),
+          .matrix32 = _DOUBLE_TO_FIXED(window->transform_matrix[2][1]),
+          .matrix33 = _DOUBLE_TO_FIXED(window->transform_matrix[2][2])};
+
+        xcb_render_set_picture_transform(globalconf.connection,
+                                         render_window->picture,
+                                         render_transform);
+      }
+
+      window->transform_status = WINDOW_TRANSFORM_STATUS_DONE;
+      break;
+
+    case WINDOW_TRANSFORM_STATUS_DONE:
+      /* Once the transformation has been done, it is kept until
+         FreePicture request is issued, so doing it again will result
+         in OOM... */
+      break;
     }
 
   xcb_render_composite(globalconf.connection,

@@ -507,7 +507,7 @@ _expose_prepare_windows(_expose_window_slot_t *slots)
       const uint16_t window_width = window_width_with_border(slot->window->geometry);
       const uint16_t window_height = window_height_with_border(slot->window->geometry);
 
-      slot->scale_window.window->is_transformed = true;
+      slot->scale_window.window->transform_status = WINDOW_TRANSFORM_STATUS_REQUIRED;
       memset(slot->scale_window.window->transform_matrix, 0, 16);
       slot->scale_window.window->transform_matrix[0][0] = 1;
       slot->scale_window.window->transform_matrix[1][1] = 1;
