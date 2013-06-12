@@ -246,13 +246,21 @@ expose_check_requirements(void)
      !atoms_is_supported(globalconf.ewmh._NET_ACTIVE_WINDOW) ||
      !atoms_is_supported(globalconf.ewmh._NET_CURRENT_DESKTOP) ||
      !atoms_is_supported(globalconf.ewmh._NET_WM_DESKTOP))
-    return false;
+    {
+      warn("Plugin disabled: Required atoms are not in _NET_SUPPORTED");
+      return false;
+    }
 
   _expose_update_atoms_values(&_expose_global.atoms, &_expose_global.slots);
   if(!_expose_global.atoms.client_list ||
      !_expose_global.atoms.active_window ||
      !_expose_global.atoms.current_desktop)
-    return false;
+    {
+      warn("Plugin disabled: _NET_CLIENT_LIST, _NET_ACTIVE_WINDOW and/or "
+           "_NET_CURRENT_DESKTOP Root Window Property could not be retrieved");
+
+      return false;
+    }
 
   /* Send the GrabKey request on the key given in the configuration */
   xcb_keycode_t *keycode = keycode = xcb_key_symbols_get_keycode(globalconf.keysyms,
@@ -273,7 +281,7 @@ expose_check_requirements(void)
 
   if(error)
     {
-      warn("Can't grab selected key");
+      warn("Plugin disabled: Can't grab selected key");
       free(error);
       return false;
     }
