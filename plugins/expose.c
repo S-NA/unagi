@@ -457,7 +457,7 @@ _expose_assign_windows_to_slots(const uint32_t nwindows,
 	}
 
       /* If there is no slot to extend, don't do anything */
-      if(slots_to_extend_n)
+      if(slots_to_extend_n <= 1)
 	continue;
 
       uint16_t spare_pixels_per_slot = (uint16_t) (slot_spare_pixels / slots_to_extend_n);
