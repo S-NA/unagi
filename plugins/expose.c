@@ -183,22 +183,6 @@ expose_constructor(void)
                                          globalconf.screen_nbr);
 }
 
-/** Free all the allocated slots
- *
- * \param slots The slots to be freed
- */
-static void
-_expose_free_slots(_expose_window_slot_t **slots)
-{
-  for(_expose_window_slot_t *slot = *slots; slot && slot->window; slot++)
-    {
-      free(slot->scale_window.window->geometry);
-      free(slot->scale_window.window);
-    }
-
-  util_free(slots);
-}
-
 /** Update   the    values   of   _NET_CLIENT_LIST    (required)   and
  *  _NET_ACTIVE_WINDOW (required) if the GetProperty has been sent but
  *  not  already  retrieved  (thus  on  plugin  initialisation  or  on
@@ -226,8 +210,6 @@ _expose_update_atoms_values(_expose_atoms_t *atoms,
 	  warn("Can't get %s: plugin disabled for now", #atom_name);	\
 	  util_free(&atoms->kind);					\
 	}								\
-      else								\
-	_expose_free_slots(slots);					\
 									\
       /* Reset the cookie sequence for the next request */		\
       atoms->kind##_cookie.sequence = 0;				\
@@ -304,12 +286,12 @@ _expose_window_need_rescaling(xcb_rectangle_t *slot_extents,
  * \param nwindows_per_strip The number of windows per strip
  * \return The newly allocated slots
  */
-static _expose_window_slot_t *
+static void
 _expose_create_slots(const uint32_t nwindows, unsigned int *nwindows_per_strip)
 {
-  _expose_window_slot_t *new_slots = calloc(nwindows + 1, sizeof(_expose_window_slot_t));
-  if(!new_slots)
-    return NULL;
+  _expose_global.slots = calloc(nwindows + 1, sizeof(_expose_window_slot_t));
+  if(!_expose_global.slots)
+    return;
 
   /* The  screen is  divided  in  strips depending  on  the number  of
      windows */
@@ -345,10 +327,10 @@ _expose_create_slots(const uint32_t nwindows, unsigned int *nwindows_per_strip)
       /* Now create the slots associated to this strip */
       for(unsigned int strip_slot = 0; strip_slot < strip_slots_n; strip_slot++)
 	{
-	  new_slots[slot_n].extents.x = current_x;
-	  new_slots[slot_n].extents.y = current_y;
-	  new_slots[slot_n].extents.width = slot_width;
-	  new_slots[slot_n].extents.height = strip_height;
+	  _expose_global.slots[slot_n].extents.x = current_x;
+	  _expose_global.slots[slot_n].extents.y = current_y;
+	  _expose_global.slots[slot_n].extents.width = slot_width;
+	  _expose_global.slots[slot_n].extents.height = strip_height;
 
 	  current_x = (int16_t) (current_x + slot_width + STRIP_SPACING);
 	  ++slot_n;
@@ -356,8 +338,6 @@ _expose_create_slots(const uint32_t nwindows, unsigned int *nwindows_per_strip)
 
       current_y = (int16_t) (current_y + strip_height + STRIP_SPACING);
     }
-
-  return new_slots;
 }
 
 /** Assign each  window into the  nearest slot based on  the Euclidian
@@ -478,11 +458,12 @@ _expose_assign_windows_to_slots(const uint32_t nwindows,
  * \param slots The windows slots
  */
 static void
-_expose_prepare_windows(_expose_window_slot_t *slots)
+_expose_prepare_windows(void)
 {
   window_t *scale_window_prev = NULL;
 
-  for(_expose_window_slot_t *slot = slots; slot && slot->window; slot++)
+  for(_expose_window_slot_t *slot = _expose_global.slots;
+      slot && slot->window; slot++)
     {
       const uint16_t window_width = window_width_with_border(slot->window->geometry);
       const uint16_t window_height = window_height_with_border(slot->window->geometry);
@@ -562,6 +543,42 @@ _expose_prepare_windows(_expose_window_slot_t *slots)
 #endif
 }
 
+/** Disable the  plugin by unmapping  the windows which  were unmapped
+ *  before enabling the plugin and then repaint the screen again
+ *
+ * \param slots The windows slots
+ */
+static void
+_expose_plugin_disable(void)
+{
+  /* Now ungrab both the keyboard and the pointer */
+  xcb_ungrab_keyboard(globalconf.connection, XCB_CURRENT_TIME);
+  xcb_ungrab_pointer(globalconf.connection, XCB_CURRENT_TIME);
+
+  for(_expose_window_slot_t *slot = _expose_global.slots;
+      slot && slot->window; slot++)
+    {
+      /* Unmap the window which were previously mapped and also
+         restore override redirect */
+      if(slot->scale_window.was_unmapped)
+        window_get_invisible_window_pixmap_finalise(slot->window);
+
+      /* Free memory allocated only for Windows *actually* scaled */
+      if(slot->scale_window.window->transform_status != WINDOW_TRANSFORM_STATUS_NONE)
+        {
+          (*globalconf.rendering->free_window)(slot->window);
+          util_free(&(slot->scale_window.window->geometry));
+          util_free(&(slot->scale_window.window));
+        }
+    }
+
+  util_free(&_expose_global.slots);
+  _expose_global.enabled = false;
+
+  /* Force repaint of the screen as the plugin is now disabled */
+  globalconf.force_repaint = true;
+}
+
 /** Enable  the plugin  by  creating  the windows  slots  and map  the
  *  windows which are not already mapped, then fits the windows in the
  *  slots and create their Pixmap, and finally repaint the screen
@@ -569,23 +586,23 @@ _expose_prepare_windows(_expose_window_slot_t *slots)
  * \param nwindows The numbers of windows on the screen
  * \return The newly allocated slots
  */
-static _expose_window_slot_t *
+static void
 _expose_plugin_enable(const uint32_t nwindows)
 {
   unsigned int nwindows_per_strip;
 
-  _expose_window_slot_t *new_slots = _expose_create_slots(nwindows,
-							  &nwindows_per_strip);
-  if(!new_slots)
-    return NULL;
+  _expose_create_slots(nwindows, &nwindows_per_strip);
+  if(!_expose_global.slots)
+    return;
 
-  _expose_assign_windows_to_slots(nwindows, nwindows_per_strip, new_slots);
+  _expose_assign_windows_to_slots(nwindows, nwindows_per_strip,
+                                  _expose_global.slots);
 
   xcb_grab_server(globalconf.connection);
 
   /* Map windows which where  unmapped otherwise the window content is
      not guaranteed to be preserved while the window is unmapped */
-  for(_expose_window_slot_t *slot = new_slots; slot && slot->window; slot++)
+  for(_expose_window_slot_t *slot = _expose_global.slots; slot && slot->window; slot++)
     if(slot->window->attributes->map_state != XCB_MAP_STATE_VIEWABLE &&
        !slot->scale_window.was_unmapped)
       {
@@ -621,7 +638,7 @@ _expose_plugin_enable(const uint32_t nwindows)
 				XCB_CURRENT_TIME, XCB_GRAB_MODE_ASYNC,
 				XCB_GRAB_MODE_ASYNC);
   
-  _expose_prepare_windows(new_slots);
+  _expose_prepare_windows();
 
   xcb_grab_pointer_reply_t *grab_pointer_reply =
     xcb_grab_pointer_reply(globalconf.connection, grab_pointer_cookie, NULL);
@@ -633,42 +650,13 @@ _expose_plugin_enable(const uint32_t nwindows)
      !grab_keyboard_reply || grab_keyboard_reply->status != XCB_GRAB_STATUS_SUCCESS)
     {
       warn("Can't grab the pointer and/or the keyboard");
-      _expose_free_slots(&new_slots);
+      _expose_plugin_disable();
     }
 
   free(grab_pointer_reply);
   free(grab_keyboard_reply);
 
   /* TODO: Really bad from a performance point of view */
-  globalconf.force_repaint = true;
-  return new_slots;
-}
-
-/** Disable the  plugin by unmapping  the windows which  were unmapped
- *  before enabling the plugin and then repaint the screen again
- *
- * \param slots The windows slots
- */
-static void
-_expose_plugin_disable(_expose_window_slot_t *slots)
-{
-  /* Unmap the  window which were  previously mapped and  also restore
-     override redirect */
-  for(_expose_window_slot_t *slot = slots; slot && slot->window; slot++)
-    {
-      if(slot->scale_window.was_unmapped)
-        window_get_invisible_window_pixmap_finalise(slot->window);
-
-      (*globalconf.rendering->free_window)(slot->window);
-    }
-
-  /* Now ungrab both the keyboard and the pointer */
-  xcb_ungrab_keyboard(globalconf.connection, XCB_CURRENT_TIME);
-  xcb_ungrab_pointer(globalconf.connection, XCB_CURRENT_TIME);
-
-  /* Force repaint of the screen as the plugin is now disabled */
-  _expose_global.enabled = false;
-  _expose_free_slots(&_expose_global.slots);
   globalconf.force_repaint = true;
 }
 
@@ -685,7 +673,7 @@ expose_event_handle_key_release(xcb_key_release_event_t *event,
     return;
 
   if(_expose_global.enabled)
-    _expose_plugin_disable(_expose_global.slots);
+    _expose_plugin_disable();
   else
     {
       /* Update the  atoms values  now if it  has been changed  in the
@@ -697,8 +685,7 @@ expose_event_handle_key_release(xcb_key_release_event_t *event,
       const uint32_t nwindows = _expose_global.atoms.client_list->windows_len;
       if(nwindows)
 	{
-	  _expose_global.slots = _expose_plugin_enable(nwindows);
-
+	  _expose_plugin_enable(nwindows);
 	  if(!_expose_global.slots)
 	    warn("Couldn't create the slots: Not enabled");
 	  else
@@ -821,7 +808,7 @@ expose_destructor(void)
     }
 
   free(_expose_global.atoms.active_window);
-  _expose_free_slots(&_expose_global.slots);
+  _expose_plugin_disable();
 }
 
 /** Structure holding all the functions addresses */
