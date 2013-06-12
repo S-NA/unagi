@@ -726,20 +726,18 @@ expose_event_handle_button_release(xcb_button_release_event_t *event,
   for(uint32_t window_n = 0;
       window_n < _expose_global.atoms.client_list->windows_len;
       window_n++)
-    {
-      if(_expose_in_window(event->root_x, event->root_y,
-			   _expose_global.slots[window_n].scale_window.window))
-	{
-	  _expose_plugin_disable(_expose_global.slots);
+    if(_expose_in_window(event->root_x, event->root_y,
+                         _expose_global.slots[window_n].scale_window.window))
+      {
+        _expose_plugin_disable();
 
-	  xcb_ewmh_request_change_active_window(&globalconf.ewmh, globalconf.screen_nbr,
-						_expose_global.slots[window_n].window->id,
-						XCB_EWMH_CLIENT_SOURCE_TYPE_OTHER,
-						event->time, XCB_NONE);
+        xcb_ewmh_request_change_active_window(&globalconf.ewmh, globalconf.screen_nbr,
+                                              _expose_global.slots[window_n].window->id,
+                                              XCB_EWMH_CLIENT_SOURCE_TYPE_OTHER,
+                                              event->time, XCB_NONE);
 
-	  break;
-	}
-    }
+        break;
+      }
 }
 
 /** Convenient  function to  handle X  PropertyNotify event  common to
