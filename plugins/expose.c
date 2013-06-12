@@ -720,6 +720,9 @@ static void
 expose_event_handle_button_release(xcb_button_release_event_t *event,
 				   window_t *window __attribute__ ((unused)))
 {
+  if(!_expose_global.enabled)
+    return;
+
   for(uint32_t window_n = 0;
       window_n < _expose_global.atoms.client_list->windows_len;
       window_n++)
