@@ -484,66 +484,65 @@ _expose_prepare_windows(_expose_window_slot_t *slots)
 
   for(_expose_window_slot_t *slot = slots; slot && slot->window; slot++)
     {
-      /* Allocate  the space  needed  for the  scale  window which  is
-	 basically a copy of the window object itself */
-      slot->scale_window.window = calloc(1, sizeof(window_t));
+      const uint16_t window_width = window_width_with_border(slot->window->geometry);
+      const uint16_t window_height = window_height_with_border(slot->window->geometry);
+      window_t *scale_window;
+
+      /* If the window does not need to be rescaled, just use existing window */
+      if(!_expose_window_need_rescaling(&slot->extents, window_width, window_height))
+	{
+	  debug("No need to scale %jx", (uintmax_t) slot->window->id);
+          scale_window = malloc(sizeof(window_t));
+          memcpy(scale_window, slot->window, sizeof(window_t));
+          scale_window->next = NULL;
+	}
+      else
+        {
+          scale_window = calloc(1, sizeof(window_t));
+          scale_window->id = slot->window->id;
+          scale_window->attributes = slot->window->attributes;
+          scale_window->rendering = slot->window->rendering;
+          /* The Pixmap is needed for previously unmapped windows to
+             create the Picture for example with Render */
+          scale_window->pixmap = slot->window->pixmap;
+
+          /* The scale window coordinates are the slot ones */
+          scale_window->geometry = calloc(1, sizeof(xcb_get_geometry_reply_t));
+          scale_window->geometry->x = slot->extents.x;
+          scale_window->geometry->y = slot->extents.y;
+          /* Border width is always equals to 0 as it is scaled anyway */
+          scale_window->geometry->border_width = 0;
+
+          /* Compute the ratio from the  largest side (width or height) of
+             the window */
+          const float ratio =
+            ((window_width - slot->extents.width) >
+             (window_height - slot->extents.height)) ?
+            (float) slot->extents.width / (float) window_width :
+            (float) slot->extents.height / (float) window_height;
+
+          scale_window->geometry->width = (uint16_t)
+            floorf(ratio * (float) window_width);
+
+          scale_window->geometry->height = (uint16_t)
+            floorf(ratio * (float) window_height);
+
+          memset(scale_window->transform_matrix, 0, 16);
+          scale_window->transform_matrix[0][0] = 1;
+          scale_window->transform_matrix[1][1] = 1;
+          scale_window->transform_matrix[2][2] = ratio;
+
+          scale_window->transform_status = WINDOW_TRANSFORM_STATUS_REQUIRED;
+        }
+
+      scale_window->damaged = true;
 
       /* Link the previous element with the current one */
       if(scale_window_prev)
-	scale_window_prev->next = slot->scale_window.window;
+	scale_window_prev->next = scale_window;
 
-      scale_window_prev = slot->scale_window.window;
-      slot->scale_window.window->id = slot->window->id;
-
-      /* The scale window coordinates are the slot ones */
-      slot->scale_window.window->geometry = calloc(1, sizeof(xcb_get_geometry_reply_t));
-      slot->scale_window.window->geometry->x = slot->extents.x;
-      slot->scale_window.window->geometry->y = slot->extents.y;
-      /* Border width is always equals to 0 as it is scaled anyway */
-      slot->scale_window.window->geometry->border_width = 0;
-
-      slot->scale_window.window->attributes = slot->window->attributes;
-
-      const uint16_t window_width = window_width_with_border(slot->window->geometry);
-      const uint16_t window_height = window_height_with_border(slot->window->geometry);
-
-      slot->scale_window.window->transform_status = WINDOW_TRANSFORM_STATUS_REQUIRED;
-      memset(slot->scale_window.window->transform_matrix, 0, 16);
-      slot->scale_window.window->transform_matrix[0][0] = 1;
-      slot->scale_window.window->transform_matrix[1][1] = 1;
-      /* The Pixmap is needed for previously unmapped windows to
-         create the Picture for example with Render */
-      slot->scale_window.window->pixmap = slot->window->pixmap;
-      slot->scale_window.window->damaged = true;
-
-      /* If the window does not need to be rescaled, just ignore it */
-      if(!_expose_window_need_rescaling(&slot->extents, window_width, window_height))
-	{
-	  slot->scale_window.window->geometry->width = slot->window->geometry->width;
-	  slot->scale_window.window->geometry->height = slot->window->geometry->height;
-          slot->scale_window.window->transform_matrix[2][2] = 1;
-
-	  debug("No need to scale %jx", (uintmax_t) slot->window->id);
-	  continue;
-	}
-
-      float ratio;
-
-      /* Compute the ratio from the  largest side (width or height) of
-	 the window */
-      if((window_width - slot->extents.width) > (window_height - slot->extents.height))
-	ratio = (float) slot->extents.width / (float) window_width;
-      else
-	ratio = (float) slot->extents.height / (float) window_height;
-
-      slot->scale_window.window->geometry->width = (uint16_t)
-	floorf(ratio * (float) window_width);
-
-      slot->scale_window.window->geometry->height = (uint16_t)
-	floorf(ratio * (float) window_height);
-
-      slot->scale_window.window->transform_matrix[2][2] = ratio;
-      slot->scale_window.window->rendering = slot->window->rendering;
+      scale_window_prev = scale_window;
+      slot->scale_window.window = scale_window;
     }
 
 #ifdef __DEBUG__
