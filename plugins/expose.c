@@ -275,7 +275,7 @@ expose_check_requirements(void)
     {
       warn("Can't grab selected key");
       free(error);
-      exit(EXIT_FAILURE);
+      return false;
     }
 
   return true;
