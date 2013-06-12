@@ -600,6 +600,24 @@ window_add(const xcb_window_t new_window_id, bool get_geometry)
   return new_window;
 }
 
+/** Raise and map given window above all other windows. This is just a
+ *  convenient function implemented by XMapRaised() in Xlib
+ *
+ * \param window The window object to raise and map
+ */
+void
+window_map_raised(const window_t *window)
+{
+  const uint32_t value = XCB_STACK_MODE_ABOVE;
+
+  xcb_configure_window(globalconf.connection,
+                       window->id,
+                       XCB_CONFIG_WINDOW_STACK_MODE,
+                       &value);
+
+  xcb_map_window(globalconf.connection, window->id);
+}
+
 /** Restack  the given  window object  by placing  it below  the given
  *  window  (e.g. it  simply inserts  before the  given  window object
  *  _before_ the new above window)

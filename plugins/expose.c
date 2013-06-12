@@ -29,9 +29,11 @@
  *  should be improved to decrease the blurry effect.
  *
  *  It relies  on _NET_CLIENT_LIST  (required otherwise the  plugin is
- *  disabled) and _NET_ACTIVE_WINDOW atoms (required too and stored in
- *  '_expose_global.atoms' structure) to  get respectively the clients
- *  managed  by the  window manager  and the  current  focused window.
+ *  disabled),  _NET_ACTIVE_WINDOW  atoms   (required  and  stored  in
+ *  '_expose_global.atoms'    structure)   and    _NET_CURRENT_DESKTOP
+ *  (required when a  Window on another desktop is  selected to switch
+ *  to it  and activate  the window) to  get respectively  the clients
+ *  managed  by the  window manager  and the  current focused  window.
  *  These atoms values are updated in a lazy way (e.g.  by sending the
  *  GetProperty requests on initialisation and PropertyNotify and then
  *  getting the reply as late as needed).
@@ -145,6 +147,10 @@ typedef struct
   xcb_get_property_cookie_t active_window_cookie;
   /** _NET_ACTIVE_WINDOW atom value */
   xcb_window_t *active_window;
+  /** _NET_CURRENT_DESKTOP atom cookie */
+  xcb_get_property_cookie_t current_desktop_cookie;
+  /** _NET_CURRENT_DESKTOP atom value */
+  uint32_t *current_desktop;
 } _expose_atoms_t;
 
 /** Global variables of this plugin */
@@ -158,10 +164,10 @@ static struct
   _expose_window_slot_t *slots;
 } _expose_global;
 
-/** Called  on  dlopen() to  initialise  memory  areas  and also  send
- *  GetProperty requests  on the root window  for _NET_CLIENT_LIST and
- *  _NET_ACTIVE_WINDOW atoms to avoid  blocking when these values will
- *  be needed
+/** Called  on  dlopen() to  initialise  memory  areas and  also  send
+ *  GetProperty  requests on  the  root  window for  _NET_CLIENT_LIST,
+ *  _NET_ACTIVE_WINDOW   and  _NET_CURRENT_DESKTOP   atoms  to   avoid
+ *  blocking when these values will be needed
  */
 static void __attribute__((constructor))
 expose_constructor(void)
@@ -170,6 +176,7 @@ expose_constructor(void)
 
   _expose_global.atoms.client_list = NULL;
   _expose_global.atoms.active_window = NULL;
+  _expose_global.atoms.current_desktop = NULL;
 
   /* Send  the requests  to check  whether the  atoms are  present and
      whose replies will  be got when actually calling  the function to
@@ -181,13 +188,18 @@ expose_constructor(void)
   _expose_global.atoms.active_window_cookie =
     xcb_ewmh_get_active_window_unchecked(&globalconf.ewmh,
                                          globalconf.screen_nbr);
+
+  _expose_global.atoms.current_desktop_cookie =
+    xcb_ewmh_get_current_desktop_unchecked(&globalconf.ewmh,
+                                           globalconf.screen_nbr);
 }
 
-/** Update   the    values   of   _NET_CLIENT_LIST    (required)   and
- *  _NET_ACTIVE_WINDOW (required) if the GetProperty has been sent but
- *  not  already  retrieved  (thus  on  plugin  initialisation  or  on
- *  PropertyNotify event).  This function  also frees the slots if the
- *  clients list has to be updated
+/** Update    the     values    of     _NET_CLIENT_LIST    (required),
+ *  _NET_ACTIVE_WINDOW (required)  and _NET_CURRENT_DESKTOP (required)
+ *  if the GetProperty  has been sent but not  already retrieved (thus
+ *  on  plugin  initialisation  or  on  PropertyNotify  event).   This
+ *  function  also frees  the  slots if  the clients  list  has to  be
+ *  updated
  *
  * \param atoms Atoms information
  * \param slots The slots to be freed if necessary
@@ -217,10 +229,12 @@ _expose_update_atoms_values(_expose_atoms_t *atoms,
 
   CHECK_REQUIRED_ATOM(client_list, xcb_ewmh_get_windows_reply_t, _NET_CLIENT_LIST)
   CHECK_REQUIRED_ATOM(active_window, xcb_window_t, _NET_ACTIVE_WINDOW)
+  CHECK_REQUIRED_ATOM(current_desktop, uint32_t, _NET_CURRENT_DESKTOP)
 }
 
-/** Check  whether  the plugin  can  actually  be  enabled, only  when
- *  _NET_CLIENT_LIST Atom Property has been set on the root window
+/** Check  whether  the plugin  can  actually  be enabled,  only  when
+ *  _NET_CLIENT_LIST and other required Atom  Property has been set on
+ *  the root window
  *
  * \todo make the GrabKey completely asynchronous
  * \return true if the plugin can be enabled
@@ -228,11 +242,16 @@ _expose_update_atoms_values(_expose_atoms_t *atoms,
 static bool
 expose_check_requirements(void)
 {
-  if(!atoms_is_supported(globalconf.ewmh._NET_CLIENT_LIST))
+  if(!atoms_is_supported(globalconf.ewmh._NET_CLIENT_LIST) ||
+     !atoms_is_supported(globalconf.ewmh._NET_ACTIVE_WINDOW) ||
+     !atoms_is_supported(globalconf.ewmh._NET_CURRENT_DESKTOP) ||
+     !atoms_is_supported(globalconf.ewmh._NET_WM_DESKTOP))
     return false;
 
   _expose_update_atoms_values(&_expose_global.atoms, &_expose_global.slots);
-  if(!_expose_global.atoms.client_list || !_expose_global.atoms.active_window)
+  if(!_expose_global.atoms.client_list ||
+     !_expose_global.atoms.active_window ||
+     !_expose_global.atoms.current_desktop)
     return false;
 
   /* Send the GrabKey request on the key given in the configuration */
@@ -711,6 +730,45 @@ _expose_in_window(const int16_t x, const int16_t y,
     y < (int16_t) (window->geometry->y + window_height_with_border(window->geometry));
 }
 
+/** Show the selected window (through _NET_ACTIVE_WINDOW
+ *  ClientMessage) after changing desktop (through
+ *  _NET_CURRENT_DESKTOP ClientMessage) if necessary.
+ *
+ * \param window The window object to show
+ */
+static void
+_expose_show_selected_window(const window_t *window)
+{
+  if(window->id == *_expose_global.atoms.active_window)
+    return;
+
+  uint32_t window_desktop;
+  if(!xcb_ewmh_get_wm_desktop_reply(&globalconf.ewmh,
+                                    xcb_ewmh_get_wm_desktop(&globalconf.ewmh,
+                                                            window->id),
+                                    &window_desktop,
+                                    NULL))
+    {
+      warn("Could not get the current desktop of selected Window");
+      return;
+    }
+
+  if(window_desktop != *_expose_global.atoms.current_desktop)
+    xcb_ewmh_request_change_current_desktop(&globalconf.ewmh,
+                                            globalconf.screen_nbr,
+                                            window_desktop,
+                                            XCB_CURRENT_TIME);
+
+  xcb_ewmh_request_change_active_window(&globalconf.ewmh,
+                                        globalconf.screen_nbr,
+                                        window->id,
+                                        XCB_EWMH_CLIENT_SOURCE_TYPE_OTHER,
+                                        XCB_CURRENT_TIME,
+                                        XCB_NONE);
+
+  window_map_raised(window);
+}
+
 /** Handle X  ButtonRelease event used  when the user choose  a window
  *  among all the thumbnails displayed by the plugin
  *
@@ -718,7 +776,7 @@ _expose_in_window(const int16_t x, const int16_t y,
  */
 static void
 expose_event_handle_button_release(xcb_button_release_event_t *event,
-				   window_t *window __attribute__ ((unused)))
+				   window_t *unused __attribute__ ((unused)))
 {
   if(!_expose_global.enabled)
     return;
@@ -729,19 +787,15 @@ expose_event_handle_button_release(xcb_button_release_event_t *event,
     if(_expose_in_window(event->root_x, event->root_y,
                          _expose_global.slots[window_n].scale_window.window))
       {
+        window_t *window = _expose_global.slots[window_n].window;
         _expose_plugin_disable();
-
-        xcb_ewmh_request_change_active_window(&globalconf.ewmh, globalconf.screen_nbr,
-                                              _expose_global.slots[window_n].window->id,
-                                              XCB_EWMH_CLIENT_SOURCE_TYPE_OTHER,
-                                              event->time, XCB_NONE);
-
+        _expose_show_selected_window(window);
         break;
       }
 }
 
 /** Convenient  function to  handle X  PropertyNotify event  common to
- *  _NET_CLIENT_LIST and _NET_ACTIVE_WINDOW
+ *  _NET_CLIENT_LIST, _NET_ACTIVE_WINDOW and _NET_CURRENT_DESKTOP
  *
  * \param get_property_func The function used to send the request to update the atom
  * \param cookie The cookie relative to the request
@@ -758,10 +812,10 @@ _expose_do_event_handle_property_notify(xcb_get_property_cookie_t (*get_property
   *cookie = (*get_property_func)(&globalconf.ewmh, globalconf.screen_nbr);
 }				  
 
-/** When  receiving  PropertyNotify   of  either  _NET_CLIENT_LIST  or
- *  _NET_ACTIVE_WINDOW Atoms  Properties, send the request  to get the
- *  new value (but do not retrieve the reply yet, simply because it is
- *  not needed yet)
+/** When   receiving   PropertyNotify  of   either   _NET_CLIENT_LIST,
+ *  _NET_ACTIVE_WINDOW or _NET_CURRENT_DESKTOP  Atoms Properties, send
+ *  the request  to get the new  value (but do not  retrieve the reply
+ *  yet, simply because it is not needed yet)
  *
  * \todo Perhaps it should be handle in the core code for the root window
  * \todo Check the event state
@@ -778,6 +832,10 @@ expose_event_handle_property_notify(xcb_property_notify_event_t *event,
   else if(event->atom == globalconf.ewmh._NET_ACTIVE_WINDOW)
     _expose_do_event_handle_property_notify(xcb_ewmh_get_active_window_unchecked,
 					    &_expose_global.atoms.active_window_cookie);
+
+  else if(event->atom == globalconf.ewmh._NET_CURRENT_DESKTOP)
+    _expose_do_event_handle_property_notify(xcb_ewmh_get_current_desktop_unchecked,
+					    &_expose_global.atoms.current_desktop_cookie);
 }				    
 
 /** If the plugin is enabled, update the scaled Pixmap and then return

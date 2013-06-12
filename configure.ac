@@ -31,7 +31,7 @@ UNAGI_REQUIRES="libxdg-basedir >= 1.0.0 \
  xcb-xfixes \
  xcb-damage \
  xcb-randr \
- xcb-ewmh \
+ xcb-ewmh >= 0.4.0 \
  xcb-event \
  xcb-aux \
  xcb-keysyms"
