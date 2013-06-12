@@ -191,6 +191,7 @@ atoms_is_supported(const xcb_atom_t atom)
 				       NULL))
 	return false;
 
+      globalconf.atoms_supported.cookie.sequence = 0;
       globalconf.atoms_supported.initialised = true;
     }
   else if(!globalconf.atoms_supported.initialised)
