@@ -126,9 +126,9 @@ display_init_extensions(void)
 
   if(globalconf.extensions.randr && globalconf.extensions.randr->present)
     _init_extensions_cookies.randr =
-      xcb_randr_query_version(globalconf.connection,
-                              XCB_RANDR_MAJOR_VERSION,
-                              XCB_RANDR_MINOR_VERSION);
+      xcb_randr_query_version_unchecked(globalconf.connection,
+                                        XCB_RANDR_MAJOR_VERSION,
+                                        XCB_RANDR_MINOR_VERSION);
   else
     globalconf.extensions.randr = NULL;
 }
