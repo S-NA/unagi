@@ -211,6 +211,11 @@ _unagi_exit_cleanup(void)
   /* Free resources related to EWMH */
   xcb_ewmh_connection_wipe(&globalconf.ewmh);
 
+  for(unsigned int i = 0; i < globalconf.crtc_len; i++)
+    free(globalconf.crtc[i]);
+
+  free(globalconf.crtc);
+
   cfg_free(globalconf.cfg);
   free(globalconf.rendering_dir);
   free(globalconf.plugins_dir);
@@ -490,13 +495,19 @@ main(int argc, char **argv)
   if(!(*globalconf.rendering->init_finalise)())
     return EXIT_FAILURE;
 
-  xcb_randr_get_screen_info_cookie_t randr_screen_cookie = { .sequence = 0 };
+  xcb_randr_get_screen_info_cookie_t randr_screen_info_cookie = { .sequence = 0 };
+  xcb_randr_get_screen_resources_cookie_t randr_screen_resources_cookie = { .sequence = 0 };
   if(globalconf.extensions.randr)
     {
       /* Get the screen refresh rate to calculate the interval between
          painting */
-      randr_screen_cookie = xcb_randr_get_screen_info(globalconf.connection,
-                                                      globalconf.screen->root);
+      randr_screen_info_cookie =
+        xcb_randr_get_screen_info_unchecked(globalconf.connection,
+                                            globalconf.screen->root);
+
+      randr_screen_resources_cookie =
+        xcb_randr_get_screen_resources_unchecked(globalconf.connection,
+                                                 globalconf.screen->root);
 
       xcb_randr_select_input(globalconf.connection,
                              globalconf.screen->root,
@@ -525,6 +536,11 @@ main(int argc, char **argv)
      time */
   xcb_grab_server(globalconf.connection);
 
+  /* Set the refresh rate (necessary to define painting intervals) and
+     screen sizes and geometries */
+  display_update_screen_information(randr_screen_info_cookie,
+                                    randr_screen_resources_cookie);
+
   /* Now redirect windows and add existing windows */
   display_init_redirect();
 
@@ -540,15 +556,6 @@ main(int argc, char **argv)
   /* Check the  plugin requirements  which will disable  plugins which
      don't meet the requirements */
   plugin_check_requirements();
-
-  /* Set the refresh rate, necessary to define painting intervals */
-  if(!randr_screen_cookie.sequence)
-    {
-      warn("RandR not available, falling back on 50Hz");
-      globalconf.refresh_rate_interval = (float) DEFAULT_REPAINT_INTERVAL;
-    }
-  else
-    display_set_screen_refresh_rate(randr_screen_cookie);
 
   globalconf.repaint_interval = globalconf.refresh_rate_interval;
 

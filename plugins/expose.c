@@ -93,7 +93,7 @@
 /** Spacing between thumbnails
  * \todo Remove
  */
-#define STRIP_SPACING 10
+#define STRIP_SPACING 1
 
 /** Expose window */
 typedef struct
@@ -132,6 +132,13 @@ typedef struct
   uint32_t *current_desktop;
 } _expose_atoms_t;
 
+typedef struct
+{
+  uint32_t nwindows;
+  xcb_randr_get_crtc_info_reply_t *crtc;
+  _expose_window_slot_t *slots;
+} _expose_crtc_window_slots_t;
+
 /** Global variables of this plugin */
 static struct
 {
@@ -139,8 +146,8 @@ static struct
   bool enabled;
   /** Atoms structure */
   _expose_atoms_t atoms;
-  /** Slots for thumbnails */
-  _expose_window_slot_t *slots;
+  /** Slots for thumbnails per CRTC */
+  _expose_crtc_window_slots_t *crtc_slots;
 } _expose_global;
 
 /** Called  on  dlopen() to  initialise  memory  areas and  also  send
@@ -176,16 +183,12 @@ expose_constructor(void)
 /** Update    the     values    of     _NET_CLIENT_LIST    (required),
  *  _NET_ACTIVE_WINDOW (required)  and _NET_CURRENT_DESKTOP (required)
  *  if the GetProperty  has been sent but not  already retrieved (thus
- *  on  plugin  initialisation  or  on  PropertyNotify  event).   This
- *  function  also frees  the  slots if  the clients  list  has to  be
- *  updated
+ *  on  plugin  initialisation  or  on  PropertyNotify  event).
  *
  * \param atoms Atoms information
- * \param slots The slots to be freed if necessary
  */
 static void
-_expose_update_atoms_values(_expose_atoms_t *atoms,
-			    _expose_window_slot_t **slots)
+_expose_update_atoms_values(_expose_atoms_t *atoms)
 {
 #define CHECK_REQUIRED_ATOM(kind, kind_type, atom_name)			\
   if(atoms->kind##_cookie.sequence)					\
@@ -230,7 +233,7 @@ expose_check_requirements(void)
       return false;
     }
 
-  _expose_update_atoms_values(&_expose_global.atoms, &_expose_global.slots);
+  _expose_update_atoms_values(&_expose_global.atoms);
   if(!_expose_global.atoms.client_list ||
      !_expose_global.atoms.active_window ||
      !_expose_global.atoms.current_desktop)
@@ -284,6 +287,76 @@ _expose_window_need_rescaling(xcb_rectangle_t *slot_extents,
     slot_extents->height < window_height;
 }
 
+static float
+_expose_crtc_get_window_visible_ratio(xcb_randr_get_crtc_info_reply_t *crtc_info,
+                                      int16_t x, int16_t y,
+                                      uint16_t width, uint16_t height)
+{
+  int32_t visible_max_x;
+  if(x + width > crtc_info->x + crtc_info->width)
+    visible_max_x = crtc_info->x + crtc_info->width;
+  else if(x + width < crtc_info->x)
+    return 0.0;
+  else
+    visible_max_x = x + width;
+
+  int32_t visible_max_y;
+  if(y + height > crtc_info->y + crtc_info->height)
+    visible_max_y = crtc_info->y + crtc_info->height;
+  else if(y + height < crtc_info->y)
+    return 0.0;
+  else
+    visible_max_y = y + height;
+
+  int32_t visible_min_x;
+  if(x < crtc_info->x)
+    visible_min_x = crtc_info->x;
+  else
+    visible_min_x = x;
+
+  int32_t visible_min_y;
+  if(y < crtc_info->y)
+    visible_min_y = crtc_info->y;
+  else
+    visible_min_y = y;
+
+  int32_t visible_area = (visible_max_x - visible_min_x) *
+    (visible_max_y - visible_min_y);
+
+  if(visible_area <= 0)
+    return 0.0;
+
+  return (float) visible_area / (float) (width * height);
+}
+
+static void
+_expose_crtc_assign_window(window_t *window)
+{
+  float max_ratio = 0.0, ratio;
+  _expose_crtc_window_slots_t *assigned_crtc = NULL;
+
+  for(unsigned int i = 0; i < globalconf.crtc_len; i++)
+    {
+      ratio = _expose_crtc_get_window_visible_ratio(globalconf.crtc[i],
+                                                    window->geometry->x,
+                                                    window->geometry->y,
+                                                    window->geometry->width,
+                                                    window->geometry->height);
+
+      if(ratio > max_ratio)
+        {
+          max_ratio = ratio;
+          assigned_crtc = _expose_global.crtc_slots + i;
+        }
+    }
+
+  if(assigned_crtc != NULL)
+    {
+      assigned_crtc->slots[assigned_crtc->nwindows].window = window;
+      assigned_crtc->nwindows++;
+    }
+}
+
 /** Create the slots where the  window will be arranged. The screen is
  *  divided in  strips of the same  size whose number is  given by the
  *  square root of the number of windows
@@ -292,25 +365,22 @@ _expose_window_need_rescaling(xcb_rectangle_t *slot_extents,
  * \param nwindows_per_strip The number of windows per strip
  * \return The newly allocated slots
  */
-static void
-_expose_create_slots(const uint32_t nwindows, unsigned int *nwindows_per_strip)
+static unsigned int
+_expose_create_slots(_expose_crtc_window_slots_t *crtc_slots)
 {
-  _expose_global.slots = calloc(nwindows + 1, sizeof(_expose_window_slot_t));
-  if(!_expose_global.slots)
-    return;
-
   /* The  screen is  divided  in  strips depending  on  the number  of
      windows */
-  const uint8_t strips_nb = (uint8_t) sqrt(nwindows + 1);
+  const uint8_t strips_nb = (uint8_t) sqrt(crtc_slots->nwindows + 1);
 
   /* Each strip height excludes spacing */
   const uint16_t strip_height = (uint16_t) 
-    ((globalconf.screen->height_in_pixels - STRIP_SPACING * (strips_nb + 1)) / strips_nb);
+    ((crtc_slots->crtc->height - STRIP_SPACING * (strips_nb + 1)) / strips_nb);
 
   /* The number of windows per strip depends */
-  *nwindows_per_strip = (unsigned int) ceilf((float) nwindows / (float) strips_nb);
+  unsigned int nwindows_per_strip = (unsigned int)
+    ceilf((float) crtc_slots->nwindows / (float) strips_nb);
 
-  int16_t current_y = STRIP_SPACING, current_x;
+  int16_t current_y = crtc_slots->crtc->y + STRIP_SPACING, current_x;
 
   /* Each slot is a rectangle  whose coordinates depends on the number
      of strips and the number of windows */	
@@ -319,24 +389,26 @@ _expose_create_slots(const uint32_t nwindows, unsigned int *nwindows_per_strip)
   /* Create the strips of windows */
   for(uint8_t strip_n = 0; strip_n < strips_nb; strip_n++)
     {
-      current_x = STRIP_SPACING;
+      current_x = crtc_slots->crtc->x + STRIP_SPACING;
 
       /* Number of slots for this strip which depends on the number of
 	 remaining slots (the last strip may contain less windows) */
       const unsigned int strip_slots_n =
-	(nwindows - slot_n > *nwindows_per_strip ? *nwindows_per_strip : nwindows - slot_n);
+        (crtc_slots->nwindows - slot_n > nwindows_per_strip ?
+         nwindows_per_strip : crtc_slots->nwindows - slot_n);
 
       /* Slot width including spacing */
       const uint16_t slot_width = (uint16_t)
-	((globalconf.screen->width_in_pixels - STRIP_SPACING * (strip_slots_n + 1)) / strip_slots_n);
+	((crtc_slots->crtc->width - STRIP_SPACING *
+          (strip_slots_n + 1)) / strip_slots_n);
 
       /* Now create the slots associated to this strip */
       for(unsigned int strip_slot = 0; strip_slot < strip_slots_n; strip_slot++)
 	{
-	  _expose_global.slots[slot_n].extents.x = current_x;
-	  _expose_global.slots[slot_n].extents.y = current_y;
-	  _expose_global.slots[slot_n].extents.width = slot_width;
-	  _expose_global.slots[slot_n].extents.height = strip_height;
+	  crtc_slots->slots[slot_n].extents.x = current_x;
+	  crtc_slots->slots[slot_n].extents.y = current_y;
+	  crtc_slots->slots[slot_n].extents.width = slot_width;
+	  crtc_slots->slots[slot_n].extents.height = strip_height;
 
 	  current_x = (int16_t) (current_x + slot_width + STRIP_SPACING);
 	  ++slot_n;
@@ -344,6 +416,8 @@ _expose_create_slots(const uint32_t nwindows, unsigned int *nwindows_per_strip)
 
       current_y = (int16_t) (current_y + strip_height + STRIP_SPACING);
     }
+
+  return nwindows_per_strip;
 }
 
 /** Assign each  window into the  nearest slot based on  the Euclidian
@@ -354,30 +428,30 @@ _expose_create_slots(const uint32_t nwindows, unsigned int *nwindows_per_strip)
  * \param slots The slots where the window will be assign
  */
 static void
-_expose_assign_windows_to_slots(const uint32_t nwindows,
-				const uint32_t nwindows_per_strip,
-				_expose_window_slot_t *slots)
+_expose_assign_windows_to_slots(_expose_crtc_window_slots_t *crtc_slots)
 {
+  unsigned int nwindows_per_strip = _expose_create_slots(crtc_slots);
+  _expose_window_slot_t *slots = crtc_slots->slots;
+
   struct
   {
     window_t *window;
     /* Coordinates of the window center */
     int16_t x, y;
-  } windows[nwindows];
+  } windows[crtc_slots->nwindows];
 
   /* Prepare the  windows and their information  before assigning them
      to a slot */
-  for(uint32_t window_n = 0; window_n < nwindows; window_n++)
+  for(uint32_t i = 0; i < crtc_slots->nwindows; i++)
     {
-      window_t *window = window_list_get(_expose_global.atoms.client_list->windows[window_n]);
-
-      windows[window_n].window = window;
-      windows[window_n].x = (int16_t) (window->geometry->x + window->geometry->width / 2);
-      windows[window_n].y = (int16_t) (window->geometry->y + window->geometry->height / 2);
+      window_t *w = slots[i].window;
+      windows[i].window = w;
+      windows[i].x = (int16_t) (w->geometry->x + w->geometry->width / 2);
+      windows[i].y = (int16_t) (w->geometry->y + w->geometry->height / 2);
     }
 
   /* Assign the windows to its slot using Euclidian distance */
-  for(uint32_t slot_n = 0; slot_n < nwindows; slot_n++)
+  for(uint32_t slot_n = 0; slot_n < crtc_slots->nwindows; slot_n++)
     {
       const int16_t slot_x = (int16_t) (slots[slot_n].extents.x +
 					slots[slot_n].extents.width / 2);
@@ -389,7 +463,7 @@ _expose_assign_windows_to_slots(const uint32_t nwindows,
       uint16_t distance, nearest_distance = UINT16_MAX;
       uint32_t window_n_nearest = 0;
 
-      for(uint32_t window_n = 0; window_n < nwindows; window_n++)
+      for(uint32_t window_n = 0; window_n < crtc_slots->nwindows; window_n++)
 	{
 	  if(!windows[window_n].window)
 	    continue;
@@ -413,7 +487,7 @@ _expose_assign_windows_to_slots(const uint32_t nwindows,
   /** Adjust slot width according to the window size
    * \todo Should also handle the window resize to optimize slot width
    */
-  for(uint32_t slot_n = 0; slot_n < nwindows; slot_n += nwindows_per_strip)
+  for(uint32_t slot_n = 0; slot_n < crtc_slots->nwindows; slot_n += nwindows_per_strip)
     {
       /* Number of spare pixels */
       unsigned int slot_spare_pixels = 0;
@@ -464,13 +538,14 @@ _expose_assign_windows_to_slots(const uint32_t nwindows,
  * \param slots The windows slots
  */
 static void
-_expose_prepare_windows(void)
+_expose_prepare_windows(_expose_crtc_window_slots_t *crtc_slots,
+                        window_t *scale_window_prev)
 {
-  window_t *scale_window_prev = NULL;
-
-  for(_expose_window_slot_t *slot = _expose_global.slots;
-      slot && slot->window; slot++)
+  _expose_window_slot_t *slot;
+  for(unsigned int i = 0; i < crtc_slots->nwindows; i++)
     {
+      slot = crtc_slots->slots + i;
+
       const uint16_t window_width = window_width_with_border(slot->window->geometry);
       const uint16_t window_height = window_height_with_border(slot->window->geometry);
       window_t *scale_window;
@@ -533,8 +608,10 @@ _expose_prepare_windows(void)
     }
 
 #ifdef __DEBUG__
-  for(_expose_window_slot_t *slot = slots; slot && slot->window; slot++)
+  for(unsigned int i = 0; i < crtc_slots->nwindows; i++)
     {
+      slot = crtc_slots->slots[i];
+
       debug("slot: x=%jd, y=%jd, width=%ju, height=%ju",
 	    (intmax_t) slot->extents.x, (intmax_t) slot->extents.y,
 	    (uintmax_t) slot->extents.width, (uintmax_t) slot->extents.height);
@@ -561,28 +638,42 @@ _expose_plugin_disable(void)
   xcb_ungrab_keyboard(globalconf.connection, XCB_CURRENT_TIME);
   xcb_ungrab_pointer(globalconf.connection, XCB_CURRENT_TIME);
 
-  for(_expose_window_slot_t *slot = _expose_global.slots;
-      slot && slot->window; slot++)
+  if(_expose_global.enabled)
     {
-      /* Unmap the window which were previously mapped and also
-         restore override redirect */
-      if(slot->scale_window.was_unmapped)
-        window_get_invisible_window_pixmap_finalise(slot->window);
-
-      /* Free memory allocated only for Windows *actually* scaled */
-      if(slot->scale_window.window->transform_status != WINDOW_TRANSFORM_STATUS_NONE)
+      _expose_window_slot_t *slot;
+      for(unsigned int crtc_n = 0; crtc_n < globalconf.crtc_len; crtc_n++)
         {
-          (*globalconf.rendering->free_window)(slot->window);
-          util_free(&(slot->scale_window.window->geometry));
-          util_free(&(slot->scale_window.window));
+          for(unsigned int window_n = 0;
+              window_n < _expose_global.crtc_slots[crtc_n].nwindows;
+              window_n++)
+            {
+              slot = _expose_global.crtc_slots[crtc_n].slots + window_n;
+
+              /* Unmap the window which were previously mapped and also
+                 restore override redirect */
+              if(slot->scale_window.was_unmapped)
+                window_get_invisible_window_pixmap_finalise(slot->window);
+
+              /* Free memory allocated only for Windows *actually* scaled */
+              if(slot->scale_window.window->transform_status !=
+                 WINDOW_TRANSFORM_STATUS_NONE)
+                {
+                  (*globalconf.rendering->free_window)(slot->window);
+                  util_free(&(slot->scale_window.window->geometry));
+                }
+
+              util_free(&(slot->scale_window.window));
+            }
+
+          util_free(&_expose_global.crtc_slots[crtc_n].slots);
         }
+
+      util_free(&_expose_global.crtc_slots);
+      _expose_global.enabled = false;
+
+      /* Force repaint of the screen as the plugin is now disabled */
+      globalconf.force_repaint = true;
     }
-
-  util_free(&_expose_global.slots);
-  _expose_global.enabled = false;
-
-  /* Force repaint of the screen as the plugin is now disabled */
-  globalconf.force_repaint = true;
 }
 
 /** Enable  the plugin  by  creating  the windows  slots  and map  the
@@ -595,26 +686,41 @@ _expose_plugin_disable(void)
 static void
 _expose_plugin_enable(const uint32_t nwindows)
 {
-  unsigned int nwindows_per_strip;
+  _expose_global.crtc_slots = calloc(globalconf.crtc_len,
+                                     sizeof(_expose_crtc_window_slots_t));
 
-  _expose_create_slots(nwindows, &nwindows_per_strip);
-  if(!_expose_global.slots)
-    return;
+  for(unsigned int i = 0; i < globalconf.crtc_len; i++)
+    {
+      _expose_global.crtc_slots[i].crtc = globalconf.crtc[i];
+      _expose_global.crtc_slots[i].slots = calloc(nwindows,
+                                                  sizeof(_expose_window_slot_t));
+    }
 
-  _expose_assign_windows_to_slots(nwindows, nwindows_per_strip,
-                                  _expose_global.slots);
+  for(uint32_t i = 0; i < nwindows; i++)
+    _expose_crtc_assign_window(window_list_get(_expose_global.atoms.client_list->windows[i]));
 
   xcb_grab_server(globalconf.connection);
 
-  /* Map windows which where  unmapped otherwise the window content is
-     not guaranteed to be preserved while the window is unmapped */
-  for(_expose_window_slot_t *slot = _expose_global.slots; slot && slot->window; slot++)
-    if(slot->window->attributes->map_state != XCB_MAP_STATE_VIEWABLE &&
-       !slot->scale_window.was_unmapped)
-      {
-	window_get_invisible_window_pixmap(slot->window);
-	slot->scale_window.was_unmapped = true;
-      }
+  for(unsigned int crtc_n = 0; crtc_n < globalconf.crtc_len; crtc_n++)
+    {
+      _expose_assign_windows_to_slots(_expose_global.crtc_slots + crtc_n);
+
+      /* Map windows which where  unmapped otherwise the window content is
+         not guaranteed to be preserved while the window is unmapped */
+      _expose_window_slot_t *slot = NULL;
+      for(uint32_t window_n = 0;
+          window_n < _expose_global.crtc_slots[crtc_n].nwindows;
+          window_n++)
+        {
+          slot = _expose_global.crtc_slots[crtc_n].slots + window_n;
+          if(slot->window->attributes->map_state != XCB_MAP_STATE_VIEWABLE &&
+             !slot->scale_window.was_unmapped)
+            {
+              window_get_invisible_window_pixmap(slot->window);
+              slot->scale_window.was_unmapped = true;
+            }
+        }
+    }
 
   /** Process MapNotify event to get the NameWindowPixmap
    *  \todo get only MapNotify? */
@@ -643,8 +749,14 @@ _expose_plugin_enable(const uint32_t nwindows)
     xcb_grab_keyboard_unchecked(globalconf.connection, true, globalconf.screen->root,
 				XCB_CURRENT_TIME, XCB_GRAB_MODE_ASYNC,
 				XCB_GRAB_MODE_ASYNC);
-  
-  _expose_prepare_windows();
+
+  window_t *prev_window = NULL;
+  for(unsigned int i = 0; i < globalconf.crtc_len; i++)
+    {
+      _expose_crtc_window_slots_t *crtc_slots = _expose_global.crtc_slots + i;
+      _expose_prepare_windows(crtc_slots, prev_window);
+      prev_window = crtc_slots->slots[crtc_slots->nwindows - 1].scale_window.window;
+    }
 
   xcb_grab_pointer_reply_t *grab_pointer_reply =
     xcb_grab_pointer_reply(globalconf.connection, grab_pointer_cookie, NULL);
@@ -658,9 +770,14 @@ _expose_plugin_enable(const uint32_t nwindows)
       warn("Can't grab the pointer and/or the keyboard");
       _expose_plugin_disable();
     }
+  else
+    _expose_global.enabled = true;
 
-  free(grab_pointer_reply);
-  free(grab_keyboard_reply);
+  if(grab_pointer_reply)
+    free(grab_pointer_reply);
+
+  if(grab_keyboard_reply)
+    free(grab_keyboard_reply);
 
   /* TODO: Really bad from a performance point of view */
   globalconf.force_repaint = true;
@@ -684,19 +801,13 @@ expose_event_handle_key_release(xcb_key_release_event_t *event,
     {
       /* Update the  atoms values  now if it  has been changed  in the
 	 meantime */
-      _expose_update_atoms_values(&_expose_global.atoms, &_expose_global.slots);
+      _expose_update_atoms_values(&_expose_global.atoms);
 
       /* Get  the number  of windows  actually managed  by  the window
 	 manager (as given by _NET_CLIENT_LIST) */
       const uint32_t nwindows = _expose_global.atoms.client_list->windows_len;
       if(nwindows)
-	{
-	  _expose_plugin_enable(nwindows);
-	  if(!_expose_global.slots)
-	    warn("Couldn't create the slots: Not enabled");
-	  else
-	    _expose_global.enabled = true;
-	}
+        _expose_plugin_enable(nwindows);
     }
 }
 
@@ -768,17 +879,24 @@ expose_event_handle_button_release(xcb_button_release_event_t *event,
   if(!_expose_global.enabled)
     return;
 
-  for(uint32_t window_n = 0;
-      window_n < _expose_global.atoms.client_list->windows_len;
-      window_n++)
-    if(_expose_in_window(event->root_x, event->root_y,
-                         _expose_global.slots[window_n].scale_window.window))
-      {
-        window_t *window = _expose_global.slots[window_n].window;
-        _expose_plugin_disable();
-        _expose_show_selected_window(window);
-        break;
-      }
+  for(unsigned int crtc_n = 0; crtc_n < globalconf.crtc_len; crtc_n++)
+    {
+      _expose_window_slot_t *slot;
+      for(unsigned int window_n = 0;
+          window_n < _expose_global.crtc_slots[crtc_n].nwindows;
+          window_n++)
+        {
+          slot = _expose_global.crtc_slots[crtc_n].slots + window_n;
+          if(_expose_in_window(event->root_x, event->root_y,
+                               slot->scale_window.window))
+            {
+              window_t *window = slot->window;
+              _expose_plugin_disable();
+              _expose_show_selected_window(window);
+              return;
+            }
+        }
+    }
 }
 
 /** Convenient  function to  handle X  PropertyNotify event  common to
@@ -836,11 +954,15 @@ expose_render_windows(void)
   if(!_expose_global.enabled)
     return NULL;
 
-  for(_expose_window_slot_t *slot = _expose_global.slots; slot && slot->window; slot++)
-    slot->scale_window.window->damaged = true;
+  window_t *window = _expose_global.crtc_slots[0].slots->scale_window.window;
+  while(window != NULL)
+    {
+      window->damaged = true;
+      window = window->next;
+    }
 
   globalconf.force_repaint = true;
-  return _expose_global.slots[0].scale_window.window;
+  return _expose_global.crtc_slots[0].slots->scale_window.window;
 }
 
 /** Called on dlclose() and fee the memory allocated by this plugin */
@@ -853,7 +975,12 @@ expose_destructor(void)
       free(_expose_global.atoms.client_list);
     }
 
-  free(_expose_global.atoms.active_window);
+  if(_expose_global.atoms.active_window)
+    free(_expose_global.atoms.active_window);
+
+  if(_expose_global.atoms.current_desktop)
+    free(_expose_global.atoms.current_desktop);
+
   _expose_plugin_disable();
 }
 

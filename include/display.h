@@ -48,6 +48,7 @@ void display_init_redirect_finalise(void);
 void display_add_damaged_region(xcb_xfixes_region_t *, bool);
 void display_reset_damaged(void);
 
-void display_set_screen_refresh_rate(xcb_randr_get_screen_info_cookie_t);
+void display_update_screen_information(xcb_randr_get_screen_info_cookie_t,
+                                       xcb_randr_get_screen_resources_cookie_t);
 
 #endif

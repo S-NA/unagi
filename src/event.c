@@ -319,11 +319,10 @@ event_handle_randr_screen_change_notify(xcb_randr_screen_change_notify_event_t *
 {
   debug("RandrScreenChangeNotify: root=%jx", (uintmax_t) event->root);
 
-  xcb_randr_get_screen_info_cookie_t cookie =
-    xcb_randr_get_screen_info(globalconf.connection,
-                              globalconf.screen->root);
-
-  display_set_screen_refresh_rate(cookie);
+  display_update_screen_information(xcb_randr_get_screen_info_unchecked(globalconf.connection,
+                                                                        globalconf.screen->root),
+                                    xcb_randr_get_screen_resources_unchecked(globalconf.connection,
+                                                                             globalconf.screen->root));
 
   PLUGINS_EVENT_HANDLE(event, randr_screen_change_notify, NULL);
 }

@@ -404,35 +404,103 @@ display_reset_damaged(void)
     }
 }
 
-/** Set the screen refresh rate, necessary to calculate the interval
- *  between painting
+/** Update screen information provided by RandR, currently only screen
+ *  refresh rate (necessary to calculate the interval between
+ *  painting) and screen sizes (useful for expose for example to not
+ *  display scaled windows out of screen
  */
 void
-display_set_screen_refresh_rate(xcb_randr_get_screen_info_cookie_t cookie)
+display_update_screen_information(xcb_randr_get_screen_info_cookie_t screen_info_cookie,
+                                  xcb_randr_get_screen_resources_cookie_t screen_resources_cookie)
 {
-  assert(cookie.sequence);
+  int crtcs_len = 0;
+  if(!screen_info_cookie.sequence || !screen_resources_cookie.sequence)
+    goto randr_not_available;
 
-  xcb_randr_get_screen_info_reply_t *reply =
-    xcb_randr_get_screen_info_reply(globalconf.connection, cookie, NULL);
+  xcb_randr_get_screen_info_reply_t *screen_info_reply =
+    xcb_randr_get_screen_info_reply(globalconf.connection, screen_info_cookie, NULL);
 
-  if(reply && reply->rate)
+  if(screen_info_reply)
     {
-      float rate = 1 / (float) reply->rate;
-
-      if(rate < MINIMUM_REPAINT_INTERVAL)
+      if(screen_info_reply->rate)
         {
-          warn("Got refresh rate > 200Hz, set it to 200Hz");
-          rate = (float) MINIMUM_REPAINT_INTERVAL;
+          float rate = 1 / (float) screen_info_reply->rate;
+
+          if(rate < MINIMUM_REPAINT_INTERVAL)
+            {
+              warn("Got refresh rate > 200Hz, set it to 200Hz");
+              rate = (float) MINIMUM_REPAINT_INTERVAL;
+            }
+
+          debug("Set refresh rate interval to %.3fs", rate);
+          globalconf.refresh_rate_interval = rate;
         }
 
-      debug("Set refresh rate interval to %.3fs", rate);
-      globalconf.refresh_rate_interval = rate;
+      free(screen_info_reply);
     }
-  else
+
+  xcb_randr_get_screen_resources_reply_t *screen_resources_reply;
+  if((screen_resources_reply = xcb_randr_get_screen_resources_reply(globalconf.connection,
+                                                                    screen_resources_cookie,
+                                                                    NULL)) &&
+     (crtcs_len = xcb_randr_get_screen_resources_crtcs_length(screen_resources_reply)))
     {
-      warn("Could not get screen refresh rate, set it to 50Hz");
+      globalconf.crtc = calloc((size_t) crtcs_len,
+                               sizeof(xcb_randr_get_crtc_info_reply_t *));
+
+      /* TODO: Asynchronous? */
+      xcb_randr_crtc_t *crtcs = xcb_randr_get_screen_resources_crtcs(screen_resources_reply);
+      for(int i = 0; i < crtcs_len; i++)
+        {
+          xcb_randr_get_crtc_info_cookie_t crtc_info_cookie;
+          crtc_info_cookie = xcb_randr_get_crtc_info_unchecked(globalconf.connection,
+                                                               crtcs[i],
+                                                               screen_resources_reply->config_timestamp);
+
+          xcb_randr_get_crtc_info_reply_t *crtc_info_reply;
+          crtc_info_reply = xcb_randr_get_crtc_info_reply(globalconf.connection,
+                                                          crtc_info_cookie,
+                                                          NULL);
+
+          if(crtc_info_reply && crtc_info_reply->mode != XCB_NONE)
+            {
+              globalconf.crtc[i] = crtc_info_reply;
+              globalconf.crtc_len++;
+              debug("%jux%ju +%jd +%jd",
+                    crtc_info_reply->width,
+                    crtc_info_reply->height,
+                    crtc_info_reply->x,
+                    crtc_info_reply->y);
+            }
+          else
+            {
+              warn("Could not get CRTC %d information with RandR", i);
+              if(crtc_info_reply)
+                free(crtc_info_reply);
+            }
+        }
+
+      free(screen_resources_reply);
+    }
+
+ randr_not_available:
+  if(!globalconf.refresh_rate_interval)
+    {
+      warn("Could not get screen refresh rate with RandR, set it to 50Hz");
       globalconf.refresh_rate_interval = (float) DEFAULT_REPAINT_INTERVAL;
     }
 
-  free(reply);
+  if(!globalconf.crtc_len)
+    {
+      warn("Could not get CRTC sizes with RandR, assuming root Window size");
+
+      if(!crtcs_len)
+        globalconf.crtc = calloc(1, sizeof(xcb_randr_get_crtc_info_reply_t *));
+
+      globalconf.crtc_len = 1;
+
+      globalconf.crtc[0] = calloc(1, sizeof(xcb_randr_get_crtc_info_reply_t));
+      globalconf.crtc[0]->width = globalconf.screen->width_in_pixels;
+      globalconf.crtc[0]->height = globalconf.screen->height_in_pixels;
+    }
 }

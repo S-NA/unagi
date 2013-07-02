@@ -28,6 +28,7 @@
 #include <xcb/xcb_keysyms.h>
 #include <xcb/xcb_ewmh.h>
 #include <xcb/xfixes.h>
+#include <xcb/randr.h>
 
 #include <confuse.h>
 #include <ev.h>
@@ -78,6 +79,8 @@ typedef struct _conf_t
   int screen_nbr;
   /** The screen information */
   xcb_screen_t *screen;
+  xcb_randr_get_crtc_info_reply_t **crtc;
+  unsigned int crtc_len;
   /** If the background has been reset */
   bool background_reset;
   /** Maximum painting interval in seconds (from screen refresh rate) */
