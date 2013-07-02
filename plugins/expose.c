@@ -95,32 +95,11 @@
  */
 #define STRIP_SPACING 10
 
-/** Weights values apply  to pixels around a given  pixel value (whose
-    weight is center of the matrice) */
-static const uint32_t _expose_scale_weights[][3] = {
-  { 1, 4, 1},
-  { 4, 10, 4},
-  { 1, 4, 1}
-};
-
-/** Get each channel component of a 32-bit pixel */
-#define GET_R(pixel, weight) (((pixel) & 0x0000ff) * weight)
-#define GET_G(pixel, weight) GET_R(pixel >> 8, weight)
-#define GET_B(pixel, weight) GET_R(pixel >> 16, weight)
-
-/** From each  channel component, compute  the actual pixel  value but
-    multiply each channel by a weight */
-#define SET_PIXEL(r, g, b, w) ((r / w) | ((g / w) << 8) | ((b / w) << 16))
-
 /** Expose window */
 typedef struct
 {
   /** Rescaled window */
   window_t *window;
-  /** Rescaled image of the window */
-  xcb_image_t *image;
-  /** Graphical context of the rescaled window pixmap */
-  xcb_gcontext_t gc;
   /** If the window was unmapped before enabling the plugin */
   bool was_unmapped;
 } _expose_scale_window_t;
