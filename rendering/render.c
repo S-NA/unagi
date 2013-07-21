@@ -618,22 +618,26 @@ render_paint_window(window_t *window)
   uint8_t render_composite_op = XCB_RENDER_PICT_OP_SRC;
   xcb_render_picture_t alpha_picture = XCB_NONE;
 
+#define _SET_ALPHA_PICTURE(opacity)                          \
+  {                                                             \
+    alpha_picture =                                             \
+      _render_get_window_alpha_picture(render_window, opacity); \
+                                                                \
+    if(alpha_picture != XCB_NONE)                               \
+      render_composite_op = XCB_RENDER_PICT_OP_OVER;            \
+  }
+
   /* TODO: Handle properly non-rectangular windows? */
   switch(window->transform_status)
     {
     case WINDOW_TRANSFORM_STATUS_NONE:
       if(render_window->is_argb)
         render_composite_op = XCB_RENDER_PICT_OP_OVER;
+
       if(_render_conf.opacity_plugin &&
          _render_conf.opacity_plugin->vtable->window_get_opacity)
-        {
-          alpha_picture =
-            _render_get_window_alpha_picture(render_window,
-                                             (*_render_conf.opacity_plugin->vtable->window_get_opacity)(window));
-
-          if(alpha_picture != XCB_NONE)
-            render_composite_op = XCB_RENDER_PICT_OP_OVER;
-        }
+        _SET_ALPHA_PICTURE((*_render_conf.opacity_plugin->vtable->window_get_opacity)
+                           (window));
 
       /* For  non-rectangular  Windows, clip  the  Window  Picture to  its
          shaped Region to paint  them properly (otherwise for applications
@@ -659,6 +663,8 @@ render_paint_window(window_t *window)
 
     case WINDOW_TRANSFORM_STATUS_REQUIRED:
       {
+        _SET_ALPHA_PICTURE((window->transform_opacity));
+
         xcb_render_transform_t render_transform = {
           .matrix11 = _DOUBLE_TO_FIXED(window->transform_matrix[0][0]),
           .matrix12 = _DOUBLE_TO_FIXED(window->transform_matrix[0][1]),
@@ -679,6 +685,8 @@ render_paint_window(window_t *window)
       break;
 
     case WINDOW_TRANSFORM_STATUS_DONE:
+      _SET_ALPHA_PICTURE((window->transform_opacity));
+
       /* Once the transformation has been done, it is kept until
          FreePicture request is issued, so doing it again will result
          in OOM... */

@@ -86,9 +86,10 @@
 #include "event.h"
 
 /** Activation Keysym
- * \todo Remove
+ * \todo Should be in configuration file
  */
 #define PLUGIN_KEY XK_F12
+#define PLUGIN_NON_FOCUSED_WINDOW_OPACITY ((double) 0.95)
 
 /** Spacing between thumbnails
  * \todo Remove
@@ -952,9 +953,26 @@ expose_render_windows(void)
   if(!_expose_global.enabled)
     return NULL;
 
+  xcb_query_pointer_reply_t *query_pointer_reply =
+    xcb_query_pointer_reply(globalconf.connection,
+                            xcb_query_pointer_unchecked(globalconf.connection,
+                                                        globalconf.screen->root),
+                            NULL);
+
   window_t *window = _expose_global.crtc_slots[0].slots->scale_window.window;
   while(window != NULL)
     {
+      if(query_pointer_reply->root_x >= window->geometry->x &&
+         query_pointer_reply->root_y >= window->geometry->y &&
+         query_pointer_reply->root_x <= (window->geometry->x +
+                                         window->geometry->width) &&
+         query_pointer_reply->root_y <= (window->geometry->y +
+                                         window->geometry->height))
+        window->transform_opacity = UINT16_MAX;
+      else
+        window->transform_opacity = (uint16_t)
+          (((double) PLUGIN_NON_FOCUSED_WINDOW_OPACITY * 0xffffffff) / 0xffff);
+
       window->damaged = true;
       window = window->next;
     }
