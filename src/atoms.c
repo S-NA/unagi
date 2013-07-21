@@ -165,7 +165,7 @@ atoms_update_supported(const xcb_property_notify_event_t *event)
 }
 
 /** Check whether the  given atom is actually supported  by the window
- *  manager  thanks to  _NET_SUPPORTED  atom keeps  up-to-date by  the
+ *  manager  thanks  to _NET_SUPPORTED  atom  kept  up-to-date by  the
  *  window manager itself
  *
  * \param atom The Atom to look for
@@ -197,7 +197,9 @@ atoms_is_supported(const xcb_atom_t atom)
   else if(!globalconf.atoms_supported.initialised)
     return false;
 
-  for(uint32_t atom_n = 0; atom_n < globalconf.atoms_supported.value.atoms_len; atom_n++)
+  for(uint32_t atom_n = 0;
+      atom_n < globalconf.atoms_supported.value.atoms_len;
+      atom_n++)
     if(globalconf.atoms_supported.value.atoms[atom_n] == atom)
       return true;
 
