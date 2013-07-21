@@ -201,7 +201,8 @@ _expose_update_atoms_values(_expose_atoms_t *atoms)
 				      atoms->kind,			\
 				      NULL))				\
 	{								\
-	  warn("Can't get %s: plugin disabled for now", #atom_name);	\
+	  warn("Plugin cannot be enabled: Cannot get %s (check with "   \
+               "'xprop -root')", #atom_name);                           \
 	  util_free(&atoms->kind);					\
 	}								\
 									\
@@ -214,9 +215,10 @@ _expose_update_atoms_values(_expose_atoms_t *atoms)
   CHECK_REQUIRED_ATOM(current_desktop, uint32_t, _NET_CURRENT_DESKTOP)
 }
 
-/** Check  whether  the plugin  can  actually  be enabled,  only  when
- *  _NET_CLIENT_LIST and other required Atom  Property has been set on
- *  the root window
+/** Check whether the plugin can actually be enabled. Only GrabKey is
+ *  required as required Atoms are checked when actually enabling the
+ *  plugin as their values may change anytime or Unagi could even be
+ *  ran before the WM itself.
  *
  * \todo make the GrabKey completely asynchronous
  * \return true if the plugin can be enabled
@@ -224,26 +226,6 @@ _expose_update_atoms_values(_expose_atoms_t *atoms)
 static bool
 expose_check_requirements(void)
 {
-  if(!atoms_is_supported(globalconf.ewmh._NET_CLIENT_LIST) ||
-     !atoms_is_supported(globalconf.ewmh._NET_ACTIVE_WINDOW) ||
-     !atoms_is_supported(globalconf.ewmh._NET_CURRENT_DESKTOP) ||
-     !atoms_is_supported(globalconf.ewmh._NET_WM_DESKTOP))
-    {
-      warn("Plugin disabled: Required atoms are not in _NET_SUPPORTED");
-      return false;
-    }
-
-  _expose_update_atoms_values(&_expose_global.atoms);
-  if(!_expose_global.atoms.client_list ||
-     !_expose_global.atoms.active_window ||
-     !_expose_global.atoms.current_desktop)
-    {
-      warn("Plugin disabled: _NET_CLIENT_LIST, _NET_ACTIVE_WINDOW and/or "
-           "_NET_CURRENT_DESKTOP Root Window Property could not be retrieved");
-
-      return false;
-    }
-
   /* Send the GrabKey request on the key given in the configuration */
   xcb_keycode_t *keycode = keycode = xcb_key_symbols_get_keycode(globalconf.keysyms,
 								 PLUGIN_KEY);
@@ -799,9 +781,25 @@ expose_event_handle_key_release(xcb_key_release_event_t *event,
     _expose_plugin_disable();
   else
     {
+      if(!atoms_is_supported(globalconf.ewmh._NET_CLIENT_LIST) ||
+         !atoms_is_supported(globalconf.ewmh._NET_ACTIVE_WINDOW) ||
+         !atoms_is_supported(globalconf.ewmh._NET_CURRENT_DESKTOP) ||
+         !atoms_is_supported(globalconf.ewmh._NET_WM_DESKTOP))
+        {
+          warn("Plugin cannot be enabled: Required atoms _NET_CLIENT_LIST, "
+               "_NET_ACTIVE_WINDOW, _NET_CURRENT_DESKTOP and/or _NET_WM_DESKTOP "
+               "are not in _NET_SUPPORTED (check with 'xprop -root')");
+
+          return;
+        }
+
       /* Update the  atoms values  now if it  has been changed  in the
 	 meantime */
       _expose_update_atoms_values(&_expose_global.atoms);
+      if(!_expose_global.atoms.client_list ||
+         !_expose_global.atoms.active_window ||
+         !_expose_global.atoms.current_desktop)
+        return;
 
       /* Get  the number  of windows  actually managed  by  the window
 	 manager (as given by _NET_CLIENT_LIST) */
