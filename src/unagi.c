@@ -57,7 +57,7 @@
 #include <math.h>
 #endif
 
-conf_t globalconf;
+unagi_conf_t globalconf;
 
 #define CONFIG_FILENAME PACKAGE_NAME ".conf"
 
@@ -138,13 +138,13 @@ _unagi_parse_command_line_parameters(int argc, char **argv)
 	  if(optarg && strlen(optarg))
 	    globalconf.rendering_dir = strdup(optarg);
 	  else
-	    fatal("-r option requires a directory");
+	    unagi_fatal("-r option requires a directory");
 	  break;
 	case 'p':
 	  if(optarg && strlen(optarg))
 	    globalconf.plugins_dir = strdup(optarg);
 	  else
-	    fatal("-p option requires a directory");
+	    unagi_fatal("-p option requires a directory");
 	  break;
 	}
     }
@@ -163,14 +163,14 @@ _unagi_parse_command_line_parameters(int argc, char **argv)
 	}
 
       if(!config_fp)
-	fatal("Can't open configuration file");
+	unagi_fatal("Can't open configuration file");
     }
 
   /* Parse configuration file */
   if(!_unagi_parse_configuration_file(config_fp))
     {
       fclose(config_fp);
-      fatal("Can't parse configuration file");
+      unagi_fatal("Can't parse configuration file");
     }
 
   fclose(config_fp);
@@ -190,20 +190,20 @@ _unagi_parse_command_line_parameters(int argc, char **argv)
 static void
 _unagi_exit_cleanup(void)
 {
-  debug("Cleaning resources up");
+  unagi_debug("Cleaning resources up");
 
   /* Free resources related to the plugins */
-  plugin_unload_all();
+  unagi_plugin_unload_all();
 
   /* Destroy the  linked-list of  windows which has  to be  done after
      unloading the plugins as the  plugins may use the windows list to
      free memory */
-  window_list_cleanup();
+  unagi_window_list_cleanup();
 
   /* Free resources related  to the rendering backend which  has to be
      done  after the  windows  list  cleanup as  the  latter free  the
      rendering information associated with each window */
-  rendering_unload();
+  unagi_rendering_unload();
 
   /* Free resources related to the keymaps */
   xcb_key_symbols_free(globalconf.keysyms);
@@ -260,10 +260,10 @@ _unagi_paint_callback(EV_P_ ev_timer *w, int revents)
     {
       globalconf.force_repaint = false;
 #ifdef __DEBUG__
-      debug("COUNT: %u: Begin re-painting", globalconf.paint_counter);
+      unagi_debug("COUNT: %u: Begin re-painting", globalconf.paint_counter);
 #endif
-      window_t *windows = NULL;
-      for(plugin_t *plugin = globalconf.plugins; plugin; plugin = plugin->next)
+      unagi_window_t *windows = NULL;
+      for(unagi_plugin_t *plugin = globalconf.plugins; plugin; plugin = plugin->next)
         if(plugin->enable && plugin->vtable->render_windows &&
            (windows = (*plugin->vtable->render_windows)()))
           break;
@@ -284,15 +284,15 @@ _unagi_paint_callback(EV_P_ ev_timer *w, int revents)
 
           for(int i = 0; i < xcb_xfixes_fetch_region_rectangles_length(r);
               i++)
-            debug("Damaged region #%d: %dx%d +%d+%d",
-                  i, rects[i].width, rects[i].height,
-                  rects[i].x, rects[i].y);
+            unagi_debug("Damaged region #%d: %dx%d +%d+%d",
+                        i, rects[i].width, rects[i].height,
+                        rects[i].x, rects[i].y);
 
           free(r);
         }
 #endif
-      window_paint_all(windows);
-      display_reset_damaged();
+      unagi_window_paint_all(windows);
+      unagi_display_reset_damaged();
 
       const float paint_time = (float) (ev_time() - ev_now(globalconf.event_loop));
       globalconf.paint_time_sum += paint_time;
@@ -308,7 +308,7 @@ _unagi_paint_callback(EV_P_ ev_timer *w, int revents)
       /* When repainting the whole screen, the painting may have taken
          a  long time  but the  next repaint  should not  be too  soon
          neither */
-      if(current_interval < MINIMUM_REPAINT_INTERVAL)
+      if(current_interval < UNAGI_MINIMUM_REPAINT_INTERVAL)
         globalconf.repaint_interval = globalconf.refresh_rate_interval;
       else
         globalconf.repaint_interval = current_interval;
@@ -328,11 +328,11 @@ _unagi_paint_callback(EV_P_ ev_timer *w, int revents)
       paint_time_mean += (double) delta / globalconf.paint_counter;
       paint_time_variance_sum += delta * (paint_time - paint_time_mean);
 
-      debug("Painting time in seconds (#%u): %.6f, min=%.6f, max=%.6f, "
-            "average=%.6f (+/- %.6Lf)",
-            globalconf.paint_counter, paint_time, paint_time_min,
-            paint_time_max, current_average,
-            sqrtl(paint_time_variance_sum / globalconf.paint_counter));
+      unagi_debug("Painting time in seconds (#%u): %.6f, min=%.6f, max=%.6f, "
+                  "average=%.6f (+/- %.6Lf)",
+                  globalconf.paint_counter, paint_time, paint_time_min,
+                  paint_time_max, current_average,
+                  sqrtl(paint_time_variance_sum / globalconf.paint_counter));
 #endif /* __DEBUG__ */
 
       /* Some events may have been queued while calling this callback,
@@ -354,14 +354,14 @@ _unagi_io_callback(EV_P_ ev_io *w, int revents)
 
   /* Check X connection to avoid SIGSEGV */
   if(xcb_connection_has_error(globalconf.connection))
-    fatal("X connection invalid");
+    unagi_fatal("X connection invalid");
 
   /* Process all events in the queue because before painting, all the
      DamageNotify have to be received */
   xcb_generic_event_t *event;
   while((event = xcb_poll_for_event(globalconf.connection)) != NULL)
     {
-      event_handle(event);
+      unagi_event_handle(event);
       free(event);
 
       /* Stop processing events (but not  on startup as all the events
@@ -374,7 +374,7 @@ _unagi_io_callback(EV_P_ ev_io *w, int revents)
              X connection */
           while((event = xcb_poll_for_queued_event(globalconf.connection)))
             {
-              event_handle(event);
+              unagi_event_handle(event);
               free(event);
             }
           break;
@@ -413,7 +413,7 @@ main(int argc, char **argv)
 
   globalconf.connection = xcb_connect(NULL, &globalconf.screen_nbr);
   if(xcb_connection_has_error(globalconf.connection))
-    fatal("Cannot open display");
+    unagi_fatal("Cannot open display");
 
   /* Get the root window */
   globalconf.screen = xcb_aux_get_screen(globalconf.connection,
@@ -424,7 +424,7 @@ main(int argc, char **argv)
    */
 
   /* Send requests for EWMH atoms initialisation */
-  xcb_intern_atom_cookie_t *ewmh_cookies = atoms_init();
+  xcb_intern_atom_cookie_t *ewmh_cookies = unagi_atoms_init();
 
   /* Prefetch the extensions data */
   xcb_prefetch_extension_data(globalconf.connection, &xcb_composite_id);
@@ -433,17 +433,17 @@ main(int argc, char **argv)
   xcb_prefetch_extension_data(globalconf.connection, &xcb_randr_id);
 
   /* Pre-initialisation of the rendering backend */
-  if(!rendering_load())
+  if(!unagi_rendering_load())
     {
       free(ewmh_cookies);
-      fatal("Can't initialise rendering backend");
+      unagi_fatal("Can't initialise rendering backend");
     }
 
   /* Get replies for EWMH atoms initialisation */
-  if(!atoms_init_finalise(ewmh_cookies))
+  if(!unagi_atoms_init_finalise(ewmh_cookies))
     /* No need to  free ewmh_cookies in case of  error as it's already
        handles by xcb-ewmh when getting the replies */
-    fatal("Cannot initialise atoms");
+    unagi_fatal("Cannot initialise atoms");
 
   /* First check whether there is already a Compositing Manager (ICCCM) */
   xcb_get_selection_owner_cookie_t wm_cm_owner_cookie =
@@ -466,11 +466,11 @@ main(int argc, char **argv)
 
      TODO: Only there because render_init() needs to be able to look
      for opacity plugin */
-  plugin_load_all();
+  unagi_plugin_load_all();
 
   /* Initialise   extensions   based   on   the  cache   and   perform
      initialisation of the rendering backend */
-  display_init_extensions();
+  unagi_display_init_extensions();
   if(!(*globalconf.rendering->init)())
     return EXIT_FAILURE;
 
@@ -479,11 +479,11 @@ main(int argc, char **argv)
   if(xcb_ewmh_get_wm_cm_owner_reply(&globalconf.ewmh, wm_cm_owner_cookie,
 				    &wm_cm_owner_win, NULL) &&
      wm_cm_owner_win != XCB_NONE)
-    fatal("A compositing manager is already active (window=%jx)",
-	  (uintmax_t) wm_cm_owner_win);
+    unagi_fatal("A compositing manager is already active (window=%jx)",
+                (uintmax_t) wm_cm_owner_win);
 
   /* Now send requests to register the CM */
-  display_register_cm();
+  unagi_display_register_cm();
   
   /**
    * Third round-trip
@@ -491,7 +491,7 @@ main(int argc, char **argv)
 
   /* Check  extensions  version   and  finish  initialisation  of  the
      rendering backend */
-  display_init_extensions_finalise();
+  unagi_display_init_extensions_finalise();
   if(!(*globalconf.rendering->init_finalise)())
     return EXIT_FAILURE;
 
@@ -517,15 +517,15 @@ main(int argc, char **argv)
   /* Validate  errors   and  get  PropertyNotify   needed  to  acquire
      _NET_WM_CM_Sn ownership */
   xcb_aux_sync(globalconf.connection);
-  event_handle_poll_loop(event_handle_startup);
+  unagi_event_handle_poll_loop(unagi_event_handle_startup);
 
   globalconf.keysyms = xcb_key_symbols_alloc(globalconf.connection);
   xcb_get_modifier_mapping_cookie_t key_mapping_cookie =
     xcb_get_modifier_mapping_unchecked(globalconf.connection);
 
   /* Finish CM X registration */
-  if(!display_register_cm_finalise())
-    fatal("Could not acquire _NET_WM_CM_Sn ownership");
+  if(!unagi_display_register_cm_finalise())
+    unagi_fatal("Could not acquire _NET_WM_CM_Sn ownership");
 
   /**
    * Last initialisation round-trip
@@ -538,24 +538,24 @@ main(int argc, char **argv)
 
   /* Set the refresh rate (necessary to define painting intervals) and
      screen sizes and geometries */
-  display_update_screen_information(randr_screen_info_cookie,
-                                    randr_screen_resources_cookie);
+  unagi_display_update_screen_information(randr_screen_info_cookie,
+                                          randr_screen_resources_cookie);
 
   /* Now redirect windows and add existing windows */
-  display_init_redirect();
+  unagi_display_init_redirect();
 
   /* Validate errors handlers during redirect */
   xcb_aux_sync(globalconf.connection);
-  event_handle_poll_loop(event_handle_startup);
+  unagi_event_handle_poll_loop(unagi_event_handle_startup);
 
   /* Manage existing windows */
-  display_init_redirect_finalise();
+  unagi_display_init_redirect_finalise();
 
   xcb_ungrab_server(globalconf.connection);
 
   /* Check the  plugin requirements  which will disable  plugins which
      don't meet the requirements */
-  plugin_check_requirements();
+  unagi_plugin_check_requirements();
 
   globalconf.repaint_interval = globalconf.refresh_rate_interval;
 
@@ -572,13 +572,13 @@ main(int argc, char **argv)
   ev_timer_again(globalconf.event_loop, &globalconf.event_paint_timer_watcher);
  
   /* Get the lock masks reply of the request previously sent */ 
-  key_lock_mask_get_reply(key_mapping_cookie);
+  unagi_key_lock_mask_get_reply(key_mapping_cookie);
 
   /* Flush existing  requests before  the loop as  DamageNotify events
      may have been received in the meantime */
   xcb_flush(globalconf.connection);
 
-  window_paint_all(globalconf.windows);
+  unagi_window_paint_all(globalconf.windows);
   ev_invoke(globalconf.event_loop, &globalconf.event_io_watcher, -1);
 
   /* Main event and error loop */

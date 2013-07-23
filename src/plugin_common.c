@@ -35,7 +35,7 @@
  * \return Handle for the plugin
  */
 void *
-plugin_common_dlopen(const char *dir, const char *name)
+unagi_plugin_common_dlopen(const char *dir, const char *name)
 {
   /* Get the length of the plugin filename */
   const size_t path_len = strlen(name) + strlen(dir) + sizeof(".so");

@@ -21,8 +21,8 @@
  *  \brief Atoms management
  */
 
-#ifndef ATOMS_H
-#define ATOMS_H
+#ifndef UNAGI_ATOMS_H
+#define UNAGI_ATOMS_H
 
 #include <stdbool.h>
 
@@ -30,16 +30,16 @@
 #include <xcb/xproto.h>
 #include <xcb/xcb_ewmh.h>
 
-extern xcb_atom_t _NET_WM_WINDOW_OPACITY;
-extern xcb_atom_t _XROOTPMAP_ID;
-extern xcb_atom_t _XSETROOT_ID;
+extern xcb_atom_t UNAGI__NET_WM_WINDOW_OPACITY;
+extern xcb_atom_t UNAGI__XROOTPMAP_ID;
+extern xcb_atom_t UNAGI__XSETROOT_ID;
 
-extern const xcb_atom_t *background_properties_atoms[];
+extern const xcb_atom_t *unagi_background_properties_atoms[];
 
-xcb_intern_atom_cookie_t *atoms_init(void);
-bool atoms_init_finalise(xcb_intern_atom_cookie_t *ewmh_cookies);
-bool atoms_is_background_atom(const xcb_atom_t);
-void atoms_update_supported(const xcb_property_notify_event_t *);
-bool atoms_is_supported(const xcb_atom_t);
+xcb_intern_atom_cookie_t *unagi_atoms_init(void);
+bool unagi_atoms_init_finalise(xcb_intern_atom_cookie_t *);
+bool unagi_atoms_is_background_atom(const xcb_atom_t);
+void unagi_atoms_update_supported(const xcb_property_notify_event_t *);
+bool unagi_atoms_is_supported(const xcb_atom_t);
 
 #endif

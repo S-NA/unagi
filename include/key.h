@@ -21,14 +21,14 @@
  *  \brief Key bindings management
  */
 
-#ifndef KEY_H
-#define KEY_H
+#ifndef UNAGI_KEY_H
+#define UNAGI_KEY_H
 
 #include <xcb/xcb.h>
 #include <xcb/xcb_keysyms.h>
 #include <X11/keysym.h>
 
-void key_lock_mask_get_reply(xcb_get_modifier_mapping_cookie_t cookie);
-xcb_keysym_t key_getkeysym(const xcb_keycode_t, const uint16_t);
+void unagi_key_lock_mask_get_reply(xcb_get_modifier_mapping_cookie_t cookie);
+xcb_keysym_t unagi_key_getkeysym(const xcb_keycode_t, const uint16_t);
 
 #endif

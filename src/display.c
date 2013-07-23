@@ -74,7 +74,7 @@ static xcb_query_tree_cookie_t _query_tree_cookie = { 0 };
  *  executing extension requests
  */
 void
-display_init_extensions(void)
+unagi_display_init_extensions(void)
 {
   globalconf.extensions.composite = xcb_get_extension_data(globalconf.connection,
 							   &xcb_composite_id);
@@ -90,24 +90,24 @@ display_init_extensions(void)
 
   if(!globalconf.extensions.composite ||
      !globalconf.extensions.composite->present)
-    fatal("No Composite extension");
+    unagi_fatal("No Composite extension");
 
-  debug("Composite: major_opcode=%ju",
-	(uintmax_t) globalconf.extensions.composite->major_opcode);
+  unagi_debug("Composite: major_opcode=%ju",
+              (uintmax_t) globalconf.extensions.composite->major_opcode);
 
   if(!globalconf.extensions.xfixes ||
      !globalconf.extensions.xfixes->present)
-    fatal("No XFixes extension");
+    unagi_fatal("No XFixes extension");
 
-  debug("XFixes: major_opcode=%ju",
-	(uintmax_t) globalconf.extensions.xfixes->major_opcode);
+  unagi_debug("XFixes: major_opcode=%ju",
+              (uintmax_t) globalconf.extensions.xfixes->major_opcode);
 
   if(!globalconf.extensions.damage ||
      !globalconf.extensions.damage->present)
-    fatal("No Damage extension");
+    unagi_fatal("No Damage extension");
 
-  debug("Damage: major_opcode=%ju",
-	(uintmax_t) globalconf.extensions.damage->major_opcode);
+  unagi_debug("Damage: major_opcode=%ju",
+              (uintmax_t) globalconf.extensions.damage->major_opcode);
 
   _init_extensions_cookies.composite =
     xcb_composite_query_version_unchecked(globalconf.connection,
@@ -136,10 +136,10 @@ display_init_extensions(void)
 /** Get the  replies of the QueryVersion requests  previously sent and
  * check if their version actually matched the versions needed
  *
- * \see display_init_extensions
+ * \see unagi_display_init_extensions
  */
 void
-display_init_extensions_finalise(void)
+unagi_display_init_extensions_finalise(void)
 {
   assert(_init_extensions_cookies.composite.sequence);
 
@@ -152,7 +152,7 @@ display_init_extensions_finalise(void)
   if(!composite_version_reply || composite_version_reply->minor_version < 2)
     {
       free(composite_version_reply);
-      fatal("Need Composite extension 0.2 at least");
+      unagi_fatal("Need Composite extension 0.2 at least");
     }
 
   free(composite_version_reply);
@@ -165,7 +165,7 @@ display_init_extensions_finalise(void)
 				   NULL);
 
   if(!damage_version_reply)
-    fatal("Can't initialise Damage extension");
+    unagi_fatal("Can't initialise Damage extension");
 
   free(damage_version_reply);
 
@@ -180,7 +180,7 @@ display_init_extensions_finalise(void)
   if(!xfixes_version_reply || xfixes_version_reply->major_version < 2)
     {
       free(xfixes_version_reply);
-      fatal("Need XFixes extension 2.0 at least");
+      unagi_fatal("Need XFixes extension 2.0 at least");
     }
 
   free(xfixes_version_reply);
@@ -208,13 +208,13 @@ display_init_extensions_finalise(void)
  *  ownership of _NET_WM_CM_Sn using SetOwner request (as specified in
  *  ICCCM and EWMH)
  *
- * \see display_register_cm
+ * \see unagi_display_register_cm
  * \param event The X PropertyNotify event
  */
 void
-display_event_set_owner_property(xcb_property_notify_event_t *event)
+unagi_display_event_set_owner_property(xcb_property_notify_event_t *event)
 {
-  debug("Set _NET_WM_CM_Sn ownership");
+  unagi_debug("Set _NET_WM_CM_Sn ownership");
 
   /* Set ownership on _NET_WM_CM_Sn giving the Compositing Manager window */
   xcb_ewmh_set_wm_cm_owner(&globalconf.ewmh, globalconf.screen_nbr,
@@ -246,7 +246,7 @@ display_event_set_owner_property(xcb_property_notify_event_t *event)
  *  4/ Check whether the SetOwner request succeeds
  */
 void
-display_register_cm(void)
+unagi_display_register_cm(void)
 {
   globalconf.cm_window = xcb_generate_id(globalconf.connection);
 
@@ -269,11 +269,11 @@ display_register_cm(void)
 /** Finish  acquiring  ownership  by  checking  whether  the  SetOwner
  *  request succeeded
  *
- * \see display_register_cm
+ * \see unagi_display_register_cm
  * \return bool true if it succeeded, false otherwise
  */
 bool
-display_register_cm_finalise(void)
+unagi_display_register_cm_finalise(void)
 {
   assert(_get_wm_cm_owner_cookie.sequence);
 
@@ -290,7 +290,7 @@ display_register_cm_finalise(void)
  *  server reporting meaningful events
  */
 void
-display_init_redirect(void)
+unagi_display_init_redirect(void)
 {
   /* Manage all children windows from the root window */
   _query_tree_cookie = xcb_query_tree_unchecked(globalconf.connection,
@@ -317,7 +317,7 @@ display_init_redirect(void)
  *  hierarchy
  */
 void
-display_init_redirect_finalise(void)
+unagi_display_init_redirect_finalise(void)
 {
   assert(_query_tree_cookie.sequence);
 
@@ -330,8 +330,8 @@ display_init_redirect_finalise(void)
   /* Add all these windows excluding the root window of course */
   const int nwindows = xcb_query_tree_children_length(query_tree_reply);
   if(nwindows)
-    window_manage_existing(nwindows,
-			   xcb_query_tree_children(query_tree_reply));
+    unagi_window_manage_existing(nwindows,
+                                 xcb_query_tree_children(query_tree_reply));
 
   free(query_tree_reply);
 }
@@ -346,8 +346,8 @@ display_init_redirect_finalise(void)
  * \param region Damaged Region to be added to the global one
  */
 void
-display_add_damaged_region(xcb_xfixes_region_t *region,
-                           bool do_destroy_region)
+unagi_display_add_damaged_region(xcb_xfixes_region_t *region,
+                                 bool do_destroy_region)
 {
   if(!*region)
     return;
@@ -357,7 +357,7 @@ display_add_damaged_region(xcb_xfixes_region_t *region,
       xcb_xfixes_union_region(globalconf.connection, globalconf.damaged,
                               *region, globalconf.damaged);
 
-      debug("Added %x to damaged region %x", *region, globalconf.damaged);
+      unagi_debug("Added %x to damaged region %x", *region, globalconf.damaged);
 
       if(do_destroy_region)
         xcb_xfixes_destroy_region(globalconf.connection, *region);
@@ -382,8 +382,8 @@ display_add_damaged_region(xcb_xfixes_region_t *region,
       else
         globalconf.damaged = *region;
 
-      debug("Initialized damaged region to %x (copied: %d)",
-            globalconf.damaged, !do_destroy_region);
+      unagi_debug("Initialized damaged region to %x (copied: %d)",
+                  globalconf.damaged, !do_destroy_region);
     }
 
   if(do_destroy_region)
@@ -395,7 +395,7 @@ display_add_damaged_region(xcb_xfixes_region_t *region,
  *  necessary. This region is filled in event handlers
  */
 void
-display_reset_damaged(void)
+unagi_display_reset_damaged(void)
 {
   if(globalconf.damaged)
     {
@@ -410,8 +410,8 @@ display_reset_damaged(void)
  *  display scaled windows out of screen
  */
 void
-display_update_screen_information(xcb_randr_get_screen_info_cookie_t screen_info_cookie,
-                                  xcb_randr_get_screen_resources_cookie_t screen_resources_cookie)
+unagi_display_update_screen_information(xcb_randr_get_screen_info_cookie_t screen_info_cookie,
+                                        xcb_randr_get_screen_resources_cookie_t screen_resources_cookie)
 {
   int crtcs_len = 0;
   if(!screen_info_cookie.sequence || !screen_resources_cookie.sequence)
@@ -426,13 +426,13 @@ display_update_screen_information(xcb_randr_get_screen_info_cookie_t screen_info
         {
           float rate = 1 / (float) screen_info_reply->rate;
 
-          if(rate < MINIMUM_REPAINT_INTERVAL)
+          if(rate < UNAGI_MINIMUM_REPAINT_INTERVAL)
             {
-              warn("Got refresh rate > 200Hz, set it to 200Hz");
-              rate = (float) MINIMUM_REPAINT_INTERVAL;
+              unagi_warn("Got refresh rate > 200Hz, set it to 200Hz");
+              rate = (float) UNAGI_MINIMUM_REPAINT_INTERVAL;
             }
 
-          debug("Set refresh rate interval to %.3fs", rate);
+          unagi_debug("Set refresh rate interval to %.3fs", rate);
           globalconf.refresh_rate_interval = rate;
         }
 
@@ -466,15 +466,15 @@ display_update_screen_information(xcb_randr_get_screen_info_cookie_t screen_info
             {
               globalconf.crtc[i] = crtc_info_reply;
               globalconf.crtc_len++;
-              debug("%jux%ju +%jd +%jd",
-                    crtc_info_reply->width,
-                    crtc_info_reply->height,
-                    crtc_info_reply->x,
-                    crtc_info_reply->y);
+              unagi_debug("%jux%ju +%jd +%jd",
+                          crtc_info_reply->width,
+                          crtc_info_reply->height,
+                          crtc_info_reply->x,
+                          crtc_info_reply->y);
             }
           else
             {
-              warn("Could not get CRTC %d information with RandR", i);
+              unagi_warn("Could not get CRTC %d information with RandR", i);
               if(crtc_info_reply)
                 free(crtc_info_reply);
             }
@@ -486,13 +486,13 @@ display_update_screen_information(xcb_randr_get_screen_info_cookie_t screen_info
  randr_not_available:
   if(!globalconf.refresh_rate_interval)
     {
-      warn("Could not get screen refresh rate with RandR, set it to 50Hz");
-      globalconf.refresh_rate_interval = (float) DEFAULT_REPAINT_INTERVAL;
+      unagi_warn("Could not get screen refresh rate with RandR, set it to 50Hz");
+      globalconf.refresh_rate_interval = (float) UNAGI_DEFAULT_REPAINT_INTERVAL;
     }
 
   if(!globalconf.crtc_len)
     {
-      warn("Could not get CRTC sizes with RandR, assuming root Window size");
+      unagi_warn("Could not get CRTC sizes with RandR, assuming root Window size");
 
       if(!crtcs_len)
         globalconf.crtc = calloc(1, sizeof(xcb_randr_get_crtc_info_reply_t *));

@@ -44,10 +44,10 @@
  * \param new_window_id The new Window X identifier
  * \return The newly allocated window object
  */
-static window_t *
+static unagi_window_t *
 window_list_append(const xcb_window_t new_window_id)
 {
-  window_t *new_window = calloc(1, sizeof(window_t));
+  unagi_window_t *new_window = calloc(1, sizeof(unagi_window_t));
 
   new_window->id = new_window_id;
 
@@ -57,12 +57,12 @@ window_list_append(const xcb_window_t new_window_id)
   else
     {
       /* Otherwise, append to the end of the list */
-      window_t *window_tail;
-      for(window_tail = globalconf.windows; window_tail->next;
-	  window_tail = window_tail->next)
+      unagi_window_t *unagi_window_tail;
+      for(unagi_window_tail = globalconf.windows; unagi_window_tail->next;
+	  unagi_window_tail = unagi_window_tail->next)
 	;
 
-      window_tail->next = new_window;
+      unagi_window_tail->next = new_window;
     }
 
   globalconf.windows_itree = util_itree_insert(globalconf.windows_itree,
@@ -77,7 +77,7 @@ window_list_append(const xcb_window_t new_window_id)
  * \param do_itree_remove Should the window be removed from the itree as well
  */
 static void
-window_list_free_window(window_t *window, bool do_itree_remove)
+window_list_free_window(unagi_window_t *window, bool do_itree_remove)
 {
   if(do_itree_remove)
     globalconf.windows_itree = util_itree_remove(globalconf.windows_itree,
@@ -97,7 +97,7 @@ window_list_free_window(window_t *window, bool do_itree_remove)
     }
 
   /* TODO: free plugins memory? */
-  window_free_pixmap(window);
+  unagi_window_free_pixmap(window);
   (*globalconf.rendering->free_window)(window);
 
   free(window->attributes);
@@ -110,20 +110,20 @@ window_list_free_window(window_t *window, bool do_itree_remove)
  * \param window_delete
  */
 void
-window_list_remove_window(window_t *window_delete)
+unagi_window_list_remove_window(unagi_window_t *window_delete)
 {
   if(!globalconf.windows)
     return;
 
   if(globalconf.windows == window_delete)
     {
-      window_t *old_window = globalconf.windows;
+      unagi_window_t *old_window = globalconf.windows;
       globalconf.windows = globalconf.windows->next;
 
       window_list_free_window(old_window, true);
     }
   else
-    for(window_t *window = globalconf.windows; window->next; window = window->next)
+    for(unagi_window_t *window = globalconf.windows; window->next; window = window->next)
       if(window->next == window_delete)
 	{
 	  window->next = window->next->next;
@@ -134,21 +134,21 @@ window_list_remove_window(window_t *window_delete)
 
 /** Free all resources allocated for the windows list */
 void
-window_list_cleanup(void)
+unagi_window_list_cleanup(void)
 {
-  window_t *window = globalconf.windows;
-  window_t *window_next;
+  unagi_window_t *window = globalconf.windows;
+  unagi_window_t *window_next;
 
   /* Destroy  the binary  tree,  values will  be  actually freed  when
      clearing the linked list */
-  util_itree_free(globalconf.windows_itree);
+  unagi_util_itree_free(globalconf.windows_itree);
 
   while(window != NULL)
     {
       window_next = window->next;
 
       /* Do not  remove it from the  itree as this is  already done by
-         util_itree_free() */
+         unagi_util_itree_free() */
       window_list_free_window(window, false);
       window = window_next;
     }
@@ -160,7 +160,7 @@ window_list_cleanup(void)
  * \param window The window object to free the Pixmap from
  */
 void
-window_free_pixmap(window_t *window)
+unagi_window_free_pixmap(unagi_window_t *window)
 {
   if(window->pixmap)
     {
@@ -179,7 +179,7 @@ window_free_pixmap(window_t *window)
  * \param window The window object
  */
 void
-window_register_notify(const window_t *window)
+unagi_window_register_notify(const unagi_window_t *window)
 {
   /* Get transparency notifications */
   const uint32_t select_input_val = XCB_EVENT_MASK_PROPERTY_CHANGE;
@@ -192,19 +192,19 @@ window_register_notify(const window_t *window)
 static xcb_get_property_cookie_t root_background_cookies[2];
 
 /* Get  the root window  background pixmap  whose identifier  is given
- * usually by either XROOTPMAP_ID or _XSETROOT_ID Property Atoms
+ * usually by either XROOTPMAP_ID or UNAGI__XSETROOT_ID Property Atoms
  */
 void
-window_get_root_background_pixmap(void)
+unagi_window_get_root_background_pixmap(void)
 {
   for(uint8_t background_property_n = 0;
-      background_properties_atoms[background_property_n];
+      unagi_background_properties_atoms[background_property_n];
       background_property_n++)
     {
       root_background_cookies[background_property_n] =
 	xcb_get_property_unchecked(globalconf.connection, false,
 				   globalconf.screen->root,
-				   *background_properties_atoms[background_property_n],
+				   *unagi_background_properties_atoms[background_property_n],
 				   XCB_GET_PROPERTY_TYPE_ANY,
 				   0, 4);
     }
@@ -216,13 +216,13 @@ window_get_root_background_pixmap(void)
  * \return The root window background image Pixmap, otherwise None
  */
 xcb_pixmap_t
-window_get_root_background_pixmap_finalise(void)
+unagi_window_get_root_background_pixmap_finalise(void)
 {
   xcb_pixmap_t root_background_pixmap = XCB_NONE;
   xcb_get_property_reply_t *root_property_reply;
 
   for(uint8_t background_property_n = 0;
-      background_properties_atoms[background_property_n];
+      unagi_background_properties_atoms[background_property_n];
       background_property_n++)
     {
       assert(root_background_cookies[background_property_n].sequence);
@@ -244,7 +244,7 @@ window_get_root_background_pixmap_finalise(void)
 
       free(root_property_reply);
 
-      debug("Can't get such property for the root window");
+      unagi_debug("Can't get such property for the root window");
     }
 
   return root_background_pixmap;
@@ -256,7 +256,7 @@ window_get_root_background_pixmap_finalise(void)
  * \return The new Pixmap
  */
 xcb_pixmap_t
-window_new_root_background_pixmap(void)
+unagi_window_new_root_background_pixmap(void)
 {
   xcb_pixmap_t root_pixmap = xcb_generate_id(globalconf.connection);
 
@@ -275,7 +275,7 @@ window_new_root_background_pixmap(void)
  * \return The Pixmap associated with the Window
  */
 xcb_pixmap_t
-window_get_pixmap(const window_t *window)
+unagi_window_get_pixmap(const unagi_window_t *window)
 {
   /* Update the pixmap thanks to CompositeNameWindowPixmap */
   xcb_pixmap_t pixmap = xcb_generate_id(globalconf.connection);
@@ -294,7 +294,7 @@ window_get_pixmap(const window_t *window)
  * \return True if the window is rectangular
  */
 bool
-window_is_rectangular(window_t *window)
+unagi_window_is_rectangular(unagi_window_t *window)
 {
   if(!window->shape_cookie.sequence)
     return window->is_rectangular;
@@ -327,7 +327,7 @@ window_is_rectangular(window_t *window)
  * \return The region associated with the given Window
  */
 xcb_xfixes_region_t
-window_get_region(window_t *window, bool screen_relative, bool check_shape)
+unagi_window_get_region(unagi_window_t *window, bool screen_relative, bool check_shape)
 {
   xcb_xfixes_region_t new_region = xcb_generate_id(globalconf.connection);
 
@@ -345,7 +345,7 @@ window_get_region(window_t *window, bool screen_relative, bool check_shape)
                                 (int16_t) (window->geometry->y +
                                            window->geometry->border_width));
 
-  debug("Created new region %x from window %x", new_region, window->id);
+  unagi_debug("Created new region %x from window %x", new_region, window->id);
 
   if(check_shape)
     {
@@ -364,7 +364,7 @@ window_get_region(window_t *window, bool screen_relative, bool check_shape)
  * \return true if the window is visible
  */
 bool
-window_is_visible(const window_t *window)
+unagi_window_is_visible(const unagi_window_t *window)
 {
   return (window->geometry &&
 	  window->geometry->x + window->geometry->width >= 1 &&
@@ -381,7 +381,7 @@ window_is_visible(const window_t *window)
  * \param do_override_redirect The value to set to override-redirect flag
  */
 static inline void
-window_set_override_redirect(const window_t *window,
+window_set_override_redirect(const unagi_window_t *window,
 			     const uint32_t do_override_redirect)
 {
   xcb_change_window_attributes(globalconf.connection,
@@ -399,13 +399,13 @@ window_set_override_redirect(const window_t *window,
  * \param window The window object to get the Pixmap from
  */
 void
-window_get_invisible_window_pixmap(window_t *window)
+unagi_window_get_invisible_window_pixmap(unagi_window_t *window)
 {
-  if(!window_is_visible(window) || !window->attributes ||
+  if(!unagi_window_is_visible(window) || !window->attributes ||
      window->attributes->map_state == XCB_MAP_STATE_VIEWABLE)
     return;
 
-  debug("Getting Pixmap of invisible window %jx", (uintmax_t) window->id);
+  unagi_debug("Getting Pixmap of invisible window %jx", (uintmax_t) window->id);
 
   if(!window->attributes->override_redirect)
     window_set_override_redirect(window, true);
@@ -420,7 +420,7 @@ window_get_invisible_window_pixmap(window_t *window)
  * \param window The window object to act on
  */
 void
-window_get_invisible_window_pixmap_finalise(window_t *window)
+unagi_window_get_invisible_window_pixmap_finalise(unagi_window_t *window)
 {
   window_set_override_redirect(window, false);
   xcb_unmap_window(globalconf.connection, window->id);
@@ -466,7 +466,7 @@ window_add_requests(const xcb_window_t window_id, bool get_geometry)
  * \return The GetWindowAttributes reply
  */
 static bool
-window_add_requests_finalise(window_t * const window,
+window_add_requests_finalise(unagi_window_t * const window,
 			     const window_add_requests_cookies_t window_add_cookies)
 {
   window->attributes = xcb_get_window_attributes_reply(globalconf.connection,
@@ -475,7 +475,7 @@ window_add_requests_finalise(window_t * const window,
 
   if(!window->attributes)
     {
-      debug("GetWindowAttributes failed for window %jx", (uintmax_t) window->id);
+      unagi_debug("GetWindowAttributes failed for window %jx", (uintmax_t) window->id);
       return false;
     }
 
@@ -504,7 +504,7 @@ window_add_requests_finalise(window_t * const window,
 
       if(!window->geometry)
         {
-          debug("GetGeometry failed for window %jx", (uintmax_t) window->id);
+          unagi_debug("GetGeometry failed for window %jx", (uintmax_t) window->id);
           return false;
         }
     }
@@ -520,8 +520,8 @@ window_add_requests_finalise(window_t * const window,
  * \param new_windows_id The Windows XIDs
  */
 void
-window_manage_existing(const int nwindows,
-		       const xcb_window_t * const new_windows_id)
+unagi_window_manage_existing(const int nwindows,
+                             const xcb_window_t * const new_windows_id)
 {
   window_add_requests_cookies_t window_add_cookies[nwindows];
 
@@ -533,7 +533,7 @@ window_manage_existing(const int nwindows,
 
   globalconf.windows_itree = util_itree_new();
 
-  window_t *new_windows[nwindows];
+  unagi_window_t *new_windows[nwindows];
   for(int nwindow = 0; nwindow < nwindows; ++nwindow)
     new_windows[nwindow] = window_list_append(new_windows_id[nwindow]);
 
@@ -546,8 +546,8 @@ window_manage_existing(const int nwindows,
       if(!window_add_requests_finalise(new_windows[nwindow],
 					window_add_cookies[nwindow]))
 	{
-          warn("Cannot manage window %jx", (uintmax_t) new_windows_id[nwindow]);
-	  window_list_remove_window(new_windows[nwindow]);
+          unagi_warn("Cannot manage window %jx", (uintmax_t) new_windows_id[nwindow]);
+	  unagi_window_list_remove_window(new_windows[nwindow]);
 	  continue;
 	}
 
@@ -555,20 +555,20 @@ window_manage_existing(const int nwindows,
 	 mapped, because when the window is unmapped, we don't receive
 	 PropertyNotify */
       if(new_windows[nwindow]->attributes->map_state == XCB_MAP_STATE_VIEWABLE &&
-         window_is_visible(new_windows[nwindow]))
+         unagi_window_is_visible(new_windows[nwindow]))
 	{
-	  window_register_notify(new_windows[nwindow]);
-	  new_windows[nwindow]->pixmap = window_get_pixmap(new_windows[nwindow]);
+	  unagi_window_register_notify(new_windows[nwindow]);
+	  new_windows[nwindow]->pixmap = unagi_window_get_pixmap(new_windows[nwindow]);
 
           /* Get the Window Region as  well, this is also performed in
              CreateNotify   and   ConfigureNotify   handler  for   new
              Windows */
-          new_windows[nwindow]->region = window_get_region(new_windows[nwindow],
-                                                           true, true);
+          new_windows[nwindow]->region = unagi_window_get_region(new_windows[nwindow],
+                                                                 true, true);
 	}
     }
 
-  for(plugin_t *plugin = globalconf.plugins; plugin; plugin = plugin->next)
+  for(unagi_plugin_t *plugin = globalconf.plugins; plugin; plugin = plugin->next)
     if(plugin->vtable->window_manage_existing)
       (*plugin->vtable->window_manage_existing)(nwindows, new_windows);
 }
@@ -582,18 +582,18 @@ window_manage_existing(const int nwindows,
  * \param get_geometry Should GetGeometry request be sent
  * \return The new window object
  */
-window_t *
+unagi_window_t *
 window_add(const xcb_window_t new_window_id, bool get_geometry)
 {
   window_add_requests_cookies_t cookies = window_add_requests(new_window_id,
                                                               get_geometry);
 
-  window_t *new_window = window_list_append(new_window_id);
+  unagi_window_t *new_window = window_list_append(new_window_id);
 
   /* The request should never fail... */
   if(!window_add_requests_finalise(new_window, cookies))
     {
-      window_list_remove_window(new_window);
+      unagi_window_list_remove_window(new_window);
       return NULL;
     }
 
@@ -606,7 +606,7 @@ window_add(const xcb_window_t new_window_id, bool get_geometry)
  * \param window The window object to raise and map
  */
 void
-window_map_raised(const window_t *window)
+unagi_window_map_raised(const unagi_window_t *window)
 {
   const uint32_t value = XCB_STACK_MODE_ABOVE;
 
@@ -627,7 +627,7 @@ window_map_raised(const window_t *window)
  * \todo optimization
  */
 void
-window_restack(window_t *window, xcb_window_t window_new_above_id)
+unagi_window_restack(unagi_window_t *window, xcb_window_t window_new_above_id)
 {
   assert(globalconf.windows);
   assert(window);
@@ -637,7 +637,7 @@ window_restack(window_t *window, xcb_window_t window_new_above_id)
     globalconf.windows = window->next;
   else
     {
-      window_t *old_window_below;
+      unagi_window_t *old_window_below;
       for(old_window_below = globalconf.windows;
 	  old_window_below && old_window_below->next != window;
 	  old_window_below = old_window_below->next)
@@ -656,7 +656,7 @@ window_restack(window_t *window, xcb_window_t window_new_above_id)
   /* Otherwise insert it before the above window */
   else
     {
-      window_t *window_below;
+      unagi_window_t *window_below;
       for(window_below = globalconf.windows;
 	  window_below->next && window_below->id != window_new_above_id;
 	  window_below = window_below->next)
@@ -673,20 +673,20 @@ window_restack(window_t *window, xcb_window_t window_new_above_id)
  * \param windows The list of windows currently managed
  */
 void
-window_paint_all(window_t *windows)
+unagi_window_paint_all(unagi_window_t *windows)
 {
   /* If the background  is reset, then repaint the  whole screen, it's
      bad from a performance point of view, but it's done rarely */
   if(globalconf.background_reset)
-    display_reset_damaged();
+    unagi_display_reset_damaged();
 
   (*globalconf.rendering->paint_background)();
 
-  for(window_t *window = windows; window; window = window->next)
+  for(unagi_window_t *window = windows; window; window = window->next)
     {
       if(window->damaged)
         {
-          debug("Painting window %jx", (uintmax_t) window->id);
+          unagi_debug("Painting window %jx", (uintmax_t) window->id);
           (*globalconf.rendering->paint_window)(window);
         }
       /* When the  window has been damaged  or was damaged but  is not

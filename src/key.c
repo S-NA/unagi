@@ -36,7 +36,7 @@
  * \param cookie The GetModifierMapping request cookie
  */
 void
-key_lock_mask_get_reply(xcb_get_modifier_mapping_cookie_t cookie)
+unagi_key_lock_mask_get_reply(xcb_get_modifier_mapping_cookie_t cookie)
 {
   xcb_get_modifier_mapping_reply_t *modmap_r;
   xcb_keycode_t *modmap, kc;
@@ -89,7 +89,7 @@ key_lock_mask_get_reply(xcb_get_modifier_mapping_cookie_t cookie)
  * \return The KeySym associated with the given KeyCode and state
  */
 xcb_keysym_t
-key_getkeysym(const xcb_keycode_t detail, const uint16_t state)
+unagi_key_getkeysym(const xcb_keycode_t detail, const uint16_t state)
 {
   xcb_keysym_t k0, k1;
 

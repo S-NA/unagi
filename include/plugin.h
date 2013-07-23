@@ -23,23 +23,23 @@
  *  General Plugins architecture:
  *
  *  Several plugins  may be loaded at  the same time.   Each plugin is
- *  defined in a 'plugin_t' structure holding the virtual table of the
- *  plugin itself ('plugin_vtable_t').
+ *  defined in a 'unagi_plugin_t' structure holding the virtual table of the
+ *  plugin itself ('unagi_plugin_vtable_t').
  *
- *  Each plugin has  to defined 'plugin_vtable_t plugin_vtable', which
+ *  Each plugin has  to defined 'unagi_plugin_vtable_t plugin_vtable', which
  *  is  a virtual  table  containing the  plugin  name, general  hooks
- *  pointer and events hooks pointer ('plugin_events_notify_t').  This
+ *  pointer and events hooks pointer ('unagi_plugin_events_notify_t').  This
  *  way, each plugin  can register one or several  hooks, run when the
  *  main  program receives  an event  notification, by  simply setting
  *  function pointers in this structure.
  *
  *  NOTE: On  startup, the constructor routine  (dlopen()) should only
  *  allocate  memory but  not  send any  X  request as  this would  be
- *  usually done by 'window_manage_existing' hook.
+ *  usually done by 'unagi_window_manage_existing' hook.
  */
 
-#ifndef PLUGIN_H
-#define PLUGIN_H
+#ifndef UNAGI_PLUGIN_H
+#define UNAGI_PLUGIN_H
 
 #include <stdbool.h>
 #include <stdint.h>
@@ -54,32 +54,32 @@
 typedef struct
 {
   /** DamageNotify event */
-  void (*damage) (xcb_damage_notify_event_t *, window_t *);
+  void (*damage) (xcb_damage_notify_event_t *, unagi_window_t *);
   /** RandrScreenChangeNotify event */
-  void (*randr_screen_change_notify) (xcb_randr_screen_change_notify_event_t *, window_t *);
+  void (*randr_screen_change_notify) (xcb_randr_screen_change_notify_event_t *, unagi_window_t *);
   /** KeyPress event */
-  void (*key_press) (xcb_key_press_event_t *, window_t *);
+  void (*key_press) (xcb_key_press_event_t *, unagi_window_t *);
   /** KeyRelease event */
-  void (*key_release) (xcb_key_release_event_t *, window_t *);
+  void (*key_release) (xcb_key_release_event_t *, unagi_window_t *);
   /** ButtonRelease event */
-  void (*button_release) (xcb_button_release_event_t *, window_t *);
+  void (*button_release) (xcb_button_release_event_t *, unagi_window_t *);
   /** CirculateNotify event */
-  void (*circulate) (xcb_circulate_notify_event_t *, window_t *);
+  void (*circulate) (xcb_circulate_notify_event_t *, unagi_window_t *);
   /** ConfigureNotify event */
-  void (*configure) (xcb_configure_notify_event_t *, window_t *);
+  void (*configure) (xcb_configure_notify_event_t *, unagi_window_t *);
   /** CreateNotify event */
-  void (*create) (xcb_create_notify_event_t *, window_t *);
+  void (*create) (xcb_create_notify_event_t *, unagi_window_t *);
   /** DestroyNotify event */
-  void (*destroy) (xcb_destroy_notify_event_t *, window_t *);
+  void (*destroy) (xcb_destroy_notify_event_t *, unagi_window_t *);
   /** MapNotify event */
-  void (*map) (xcb_map_notify_event_t *, window_t *);
+  void (*map) (xcb_map_notify_event_t *, unagi_window_t *);
   /** ReparentNotify event */
-  void (*reparent) (xcb_reparent_notify_event_t *, window_t *);
+  void (*reparent) (xcb_reparent_notify_event_t *, unagi_window_t *);
   /** UnmapNotify event */
-  void (*unmap) (xcb_unmap_notify_event_t *, window_t *);
+  void (*unmap) (xcb_unmap_notify_event_t *, unagi_window_t *);
   /** PropertyNotify event */
-  void (*property) (xcb_property_notify_event_t *, window_t *);
-} plugin_events_notify_t;
+  void (*property) (xcb_property_notify_event_t *, unagi_window_t *);
+} unagi_plugin_events_notify_t;
 
 /** Plugin virtual table */
 typedef struct
@@ -87,46 +87,46 @@ typedef struct
   /** Plugin name */
   const char *name;
   /** Plugin events hooks */
-  plugin_events_notify_t events;
+  unagi_plugin_events_notify_t events;
   /** Called before the main loop to check the plugin requirements */
   bool (*check_requirements)(void);
   /** Hook called when managing the window on startup */
-  void (*window_manage_existing)(const int, window_t **);
+  void (*window_manage_existing)(const int, unagi_window_t **);
   /** Hook to get the opacity of the given window */
-  uint16_t (*window_get_opacity)(const window_t *);
+  uint16_t (*window_get_opacity)(const unagi_window_t *);
   /** Hook to allow plugins to provide their own windows */
-  window_t *(*render_windows)(void);
-} plugin_vtable_t;
+  unagi_window_t *(*render_windows)(void);
+} unagi_plugin_vtable_t;
 
 /** Plugin list element */
-typedef struct _plugin_t
+typedef struct _unagi_plugin_t
 {
   /** Opaque "handle" for the plugin */
   void *dlhandle;
   /** If the plugin requirements have been met */
   bool enable;
   /** Plugin virtual table */
-  plugin_vtable_t *vtable;
+  unagi_plugin_vtable_t *vtable;
   /** Pointer to the previous plugin */
-  struct _plugin_t *prev;
+  struct _unagi_plugin_t *prev;
   /** Pointer to the next plugin */
-  struct _plugin_t *next;
-} plugin_t;
+  struct _unagi_plugin_t *next;
+} unagi_plugin_t;
 
 /** Call the appropriate event handlers according to the event type */
-#define PLUGINS_EVENT_HANDLE(event, event_type, window)			\
-  for(plugin_t *plugin = globalconf.plugins; plugin;			\
+#define UNAGI_PLUGINS_EVENT_HANDLE(event, event_type, window)			\
+  for(unagi_plugin_t *plugin = globalconf.plugins; plugin;			\
       plugin = plugin->next)						\
     {									\
       if(plugin->enable && plugin->vtable->events.event_type)		\
 	(*plugin->vtable->events.event_type)(event, window);		\
     }
 
-plugin_t *plugin_load(const char *);
-void plugin_load_all(void);
-void plugin_check_requirements(void);
-plugin_t *plugin_search_by_name(const char *);
-void plugin_unload(plugin_t **, const bool);
-void plugin_unload_all(void);
+unagi_plugin_t *unagi_plugin_load(const char *);
+void unagi_plugin_load_all(void);
+void unagi_plugin_check_requirements(void);
+unagi_plugin_t *unagi_plugin_search_by_name(const char *);
+void unagi_plugin_unload(unagi_plugin_t **, const bool);
+void unagi_plugin_unload_all(void);
 
 #endif

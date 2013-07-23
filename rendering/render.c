@@ -74,12 +74,12 @@ typedef struct
   xcb_render_pictvisual_t *pictvisual;
   /** Only the opacity plugins needs such hook ATM, but well something
       more generic will be written if needed */
-  plugin_t *opacity_plugin;
+  unagi_plugin_t *opacity_plugin;
   /** Alpha pictures list */
   _render_alpha_picture_t *alpha_pictures;
-} _render_conf_t;
+} _render_unagi_conf_t;
 
-static _render_conf_t _render_conf;
+static _render_unagi_conf_t _render_conf;
 
 /** Information related to Render specific to windows */
 typedef struct
@@ -90,7 +90,7 @@ typedef struct
   bool is_argb;
   /** Pointer to global alpha picture */
   _render_alpha_picture_t *alpha_picture;
-} _render_window_t;
+} _render_unagi_window_t;
 
 /** Request label of Render extension for X error reporting, which are
  *  uniquely identified according to  their minor opcode starting from
@@ -172,7 +172,7 @@ render_init(void)
 
   if(!_render_conf.ext || !_render_conf.ext->present)
     {
-      fatal("No render extension");
+      unagi_fatal("No render extension");
       return false;
     }
 
@@ -185,9 +185,9 @@ render_init(void)
     xcb_render_query_pict_formats_unchecked(globalconf.connection);
 
   /* Send requests to get the root window background pixmap */ 
-  window_get_root_background_pixmap();
+  unagi_window_get_root_background_pixmap();
 
-  _render_conf.opacity_plugin = plugin_search_by_name("opacity");
+  _render_conf.opacity_plugin = unagi_plugin_search_by_name("opacity");
   _render_conf.alpha_pictures = NULL;
 
   return true;
@@ -241,21 +241,22 @@ _render_paint_root_background_to_buffer(void)
 		       globalconf.screen->height_in_pixels);
 }
 
-/** Create the root background  Picture associated with the background
- *  image Pixmap  (as given by _XROOTPMAP_ID or  _XSETROOT_ID) if any,
- *  otherwise, fill the background with a color
+/** Create the root background Picture associated with the background
+ *  image Pixmap (as given by UNAGI__XROOTPMAP_ID or
+ *  UNAGI__XSETROOT_ID) if any, otherwise, fill the background with a
+ *  color
  */
 static void
 _render_init_root_background(void)
 {
   /* Get the background image pixmap, if any, otherwise do nothing */
-  xcb_pixmap_t root_background_pixmap = window_get_root_background_pixmap_finalise();
+  xcb_pixmap_t root_background_pixmap = unagi_window_get_root_background_pixmap_finalise();
   bool root_background_fill = false;
 
   if(!root_background_pixmap)
     {
-      debug("No background pixmap set, set default background color");
-      root_background_pixmap = window_new_root_background_pixmap();
+      unagi_debug("No background pixmap set, set default background color");
+      root_background_pixmap = unagi_window_new_root_background_pixmap();
       root_background_fill = true;
     }
 
@@ -265,7 +266,7 @@ _render_init_root_background(void)
   /* Create  a new  picture holding  the background  pixmap through  a
      'checked' request as  it may fail (for example  when 'display' is
      used  to set  the background)  and  during startup,  it would  be
-     fatal */
+     unagi_fatal */
   xcb_void_cookie_t picture_cookie =
     xcb_render_create_picture_checked(globalconf.connection,
                                       _render_conf.background_picture,
@@ -280,12 +281,12 @@ _render_init_root_background(void)
 
   if(picture_error)
     {
-      warn("Could not create background Picture, setting a default background "
+      unagi_warn("Could not create background Picture, setting a default background "
            "color (try using another program to set the background?)");
 
       free(picture_error);
 
-      root_background_pixmap = window_new_root_background_pixmap();
+      root_background_pixmap = unagi_window_new_root_background_pixmap();
       root_background_fill = true;
 
       /* Do not perform any check as it should always succeed */
@@ -328,7 +329,7 @@ _render_init_root_picture(void)
     {
       free(_render_conf.pict_formats);
 
-      fatal("Can't get PictFormat of root window");
+      unagi_fatal("Can't get PictFormat of root window");
       return false;
     }
   else
@@ -399,7 +400,7 @@ render_init_finalise(void)
     {
       free(render_version_reply);
 
-      fatal("Need Render extension 0.1 at least");
+      unagi_fatal("Need Render extension 0.1 at least");
       return false;
     }
 
@@ -418,7 +419,7 @@ render_reset_background(void)
 			  _render_conf.background_picture);
 
   /* Send requests to get the root window background pixmap */
-  window_get_root_background_pixmap();
+  unagi_window_get_root_background_pixmap();
 
   /* Calling render_init_root_background() is not enough when the Root
      Window is resized as the Root Picture must be recreated as well */
@@ -436,7 +437,7 @@ render_reset_background(void)
  * \return The newly created alpha picture data structure
  */
 static _render_alpha_picture_t *
-_render_create_window_alpha_picture(_render_window_t *render_window,
+_render_create_window_alpha_picture(_render_unagi_window_t *render_window,
                                     const uint16_t opacity)
 {
   /* Create a new global alpha_picture */
@@ -495,7 +496,7 @@ _render_create_window_alpha_picture(_render_window_t *render_window,
  * \param render_window Rendering backend window
  */
 static void
-_render_unref_window_alpha_picture(_render_window_t *render_window)
+_render_unref_window_alpha_picture(_render_unagi_window_t *render_window)
 {
   if(render_window->alpha_picture->reference_counter == 1)
     {
@@ -513,7 +514,7 @@ _render_unref_window_alpha_picture(_render_window_t *render_window)
       if(render_window->alpha_picture == _render_conf.alpha_pictures)
         _render_conf.alpha_pictures = _render_conf.alpha_pictures->next;
 
-      util_free(&render_window->alpha_picture);
+      unagi_util_free(&render_window->alpha_picture);
     }
   else
     {
@@ -530,7 +531,7 @@ _render_unref_window_alpha_picture(_render_window_t *render_window)
  * \return Render Picture XID
  */
 static xcb_render_picture_t
-_render_get_window_alpha_picture(_render_window_t *render_window,
+_render_get_window_alpha_picture(_render_unagi_window_t *render_window,
                                  const uint16_t opacity)
 {
   /* Return the Picture XID if  the opacity has not changed, otherwise
@@ -579,7 +580,7 @@ render_paint_background(void)
  * \param window The window to be painted
  */
 static void
-render_paint_window(window_t *window)
+render_paint_window(unagi_window_t *window)
 {
   /* If  there is  no window  Pixmap, do  nothing.  This  might happen
      because  the window  is  not visible  yet  (CreateNotify, then  a
@@ -589,14 +590,14 @@ render_paint_window(window_t *window)
 
   /* Allocate memory specific to the rendering backend */
   if(!window->rendering)
-    window->rendering = calloc(1, sizeof(_render_window_t));
+    window->rendering = calloc(1, sizeof(_render_unagi_window_t));
 
-  _render_window_t *render_window = (_render_window_t *) window->rendering;
+  _render_unagi_window_t *render_window = (_render_unagi_window_t *) window->rendering;
 
   /* Create the window if it does not already exist */
   if(render_window->picture == XCB_NONE)
     {
-      debug("Creating new picture for window %jx", (uintmax_t) window->id);
+      unagi_debug("Creating new picture for window %jx", (uintmax_t) window->id);
 
       render_window->picture = xcb_generate_id(globalconf.connection);
       const uint32_t create_picture_val = XCB_SUBWINDOW_MODE_CLIP_BY_CHILDREN;
@@ -630,7 +631,7 @@ render_paint_window(window_t *window)
   /* TODO: Handle properly non-rectangular windows? */
   switch(window->transform_status)
     {
-    case WINDOW_TRANSFORM_STATUS_NONE:
+    case UNAGI_WINDOW_TRANSFORM_STATUS_NONE:
       if(render_window->is_argb)
         render_composite_op = XCB_RENDER_PICT_OP_OVER;
 
@@ -646,9 +647,9 @@ render_paint_window(window_t *window)
 
          \todo: Should ShapeNotify be handled as well?
       */
-      if(!window_is_rectangular(window))
+      if(!unagi_window_is_rectangular(window))
         {
-          xcb_xfixes_region_t shape_region = window_get_region(window, false, false);
+          xcb_xfixes_region_t shape_region = unagi_window_get_region(window, false, false);
 
           xcb_xfixes_set_picture_clip_region(globalconf.connection,
                                              render_window->picture,
@@ -661,7 +662,7 @@ render_paint_window(window_t *window)
 
       break;
 
-    case WINDOW_TRANSFORM_STATUS_REQUIRED:
+    case UNAGI_WINDOW_TRANSFORM_STATUS_REQUIRED:
       {
         _SET_ALPHA_PICTURE((window->transform_opacity));
 
@@ -681,10 +682,10 @@ render_paint_window(window_t *window)
                                          render_transform);
       }
 
-      window->transform_status = WINDOW_TRANSFORM_STATUS_DONE;
+      window->transform_status = UNAGI_WINDOW_TRANSFORM_STATUS_DONE;
       break;
 
-    case WINDOW_TRANSFORM_STATUS_DONE:
+    case UNAGI_WINDOW_TRANSFORM_STATUS_DONE:
       _SET_ALPHA_PICTURE((window->transform_opacity));
 
       /* Once the transformation has been done, it is kept until
@@ -741,7 +742,7 @@ render_is_request(const uint8_t request_major_code)
 static const char *
 render_error_get_request_label(const uint16_t request_minor_code)
 {
-  return (request_minor_code < countof(_render_request_label) ?
+  return (request_minor_code < unagi_countof(_render_request_label) ?
 	  _render_request_label[request_minor_code] : NULL);
 }
 
@@ -769,9 +770,9 @@ render_error_get_error_label(const uint8_t error_code)
  * \param window The window whose Picture is going to be freed
  */
 static void
-render_free_window_pixmap(window_t *window)
+render_free_window_pixmap(unagi_window_t *window)
 {
-  _render_window_t *render_window = (_render_window_t *) window->rendering;
+  _render_unagi_window_t *render_window = (_render_unagi_window_t *) window->rendering;
 
   if(render_window && render_window->picture != XCB_NONE)
     {
@@ -785,14 +786,14 @@ render_free_window_pixmap(window_t *window)
  * \param window The window whose rendering information are going to be freed
  */
 static void
-render_free_window(window_t *window)
+render_free_window(unagi_window_t *window)
 {
-  _render_window_t *render_window = (_render_window_t *) window->rendering;
+  _render_unagi_window_t *render_window = (_render_unagi_window_t *) window->rendering;
 
   if(render_window && render_window->alpha_picture)
     _render_unref_window_alpha_picture(render_window);
 
-  util_free(&(window->rendering));
+  unagi_util_free(&(window->rendering));
 }
 
 /** Called on dlclose()  and free all the resources  allocated by this
@@ -808,7 +809,7 @@ render_free(void)
 }
 
 /** Structure holding all the functions addresses */
-rendering_t rendering_functions = {
+unagi_rendering_t rendering_functions = {
   render_init,
   render_init_finalise,
   render_reset_background,

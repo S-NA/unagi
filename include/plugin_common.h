@@ -21,9 +21,9 @@
  *  \brief Plugins helpers common to effects plugins and rendering backends
  */
 
-#ifndef PLUGIN_COMMON_H
-#define PLUGIN_COMMON_H
+#ifndef UNAGI_PLUGIN_UNAGI_COMMON_H
+#define UNAGI_PLUGIN_UNAGI_COMMON_H
 
-void *plugin_common_dlopen(const char *, const char *);
+void *unagi_plugin_common_dlopen(const char *, const char *);
 
 #endif

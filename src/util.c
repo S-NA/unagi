@@ -46,7 +46,7 @@
  * \param fmt Format of the message
  */
 void
-_fatal(const bool do_exit, const int line, const char *func, const char *fmt, ...)
+_unagi_fatal(const bool do_exit, const int line, const char *func, const char *fmt, ...)
 {
   DO_DISPLAY_MESSAGE("FATAL");
 
@@ -61,7 +61,7 @@ _fatal(const bool do_exit, const int line, const char *func, const char *fmt, ..
  * \param fmt Format of the message
  */
 void
-_warn(const int line, const char *func, const char *fmt, ...)
+_unagi_warn(const int line, const char *func, const char *fmt, ...)
 {
   DO_DISPLAY_MESSAGE("WARN");
 }
@@ -74,13 +74,13 @@ _warn(const int line, const char *func, const char *fmt, ...)
  */
 void
 #ifdef __DEBUG__
-_debug(const int line, const char *func, const char *fmt, ...)
+_unagi_debug(const int line, const char *func, const char *fmt, ...)
 {
   fprintf(stderr, "%.6f: ", ev_time());
   DO_DISPLAY_MESSAGE("DEBUG")
 }
 #else
-_debug(const int line __attribute__((unused)),
+_unagi_debug(const int line __attribute__((unused)),
        const char *func __attribute__((unused)),
        const char *fmt __attribute__((unused)),
        ...)
@@ -100,7 +100,7 @@ _debug(const int line __attribute__((unused)),
 /** Create a new  empty tree. In fact, just return  NULL because empty
  *  tree is NULL, but this is implementation-specific.
  */
-util_itree_t *
+unagi_util_itree_t *
 util_itree_new(void)
 {
   return NULL;
@@ -110,10 +110,10 @@ util_itree_new(void)
  *
  * \return NULL in case of error (malloc error)
  */
-static util_itree_t *
+static unagi_util_itree_t *
 util_itree_new_node(uint32_t key, void *value)
 {
-  util_itree_t *node;
+  unagi_util_itree_t *node;
 
   node = malloc(sizeof(*node));
   if(node == NULL)
@@ -131,7 +131,7 @@ util_itree_new_node(uint32_t key, void *value)
 
 /** Get the size (number of elements) of a tree */
 static int
-util_itree_height(util_itree_t *tree)
+util_itree_height(unagi_util_itree_t *tree)
 {
   if(tree == NULL)
     return 0;
@@ -140,7 +140,7 @@ util_itree_height(util_itree_t *tree)
 
 /** Get the balance factor of a node */
 static int
-util_itree_balance(util_itree_t *node)
+util_itree_balance(unagi_util_itree_t *node)
 {
   int left, right;
 
@@ -151,7 +151,7 @@ util_itree_balance(util_itree_t *node)
 
 /** Fix the height value of a node */
 static void
-util_itree_fix_height(util_itree_t *node)
+util_itree_fix_height(unagi_util_itree_t *node)
 {
   int left, right;
 
@@ -161,10 +161,10 @@ util_itree_fix_height(util_itree_t *node)
 }
 
 /** Perform a rotate in the tree, return new root  */
-static util_itree_t *
-util_itree_rotate(util_itree_t *tree, util_itree_t *node, int direction)
+static unagi_util_itree_t *
+util_itree_rotate(unagi_util_itree_t *tree, unagi_util_itree_t *node, int direction)
 {
-  util_itree_t *new, *parent = node->parent;
+  unagi_util_itree_t *new, *parent = node->parent;
 
   if(direction == ROTATE_RIGHT)
     {
@@ -204,8 +204,8 @@ util_itree_rotate(util_itree_t *tree, util_itree_t *node, int direction)
 }
 
 /** Rebalance a tree starting from a node - subnodes must be clean */
-static util_itree_t *
-util_itree_rebalance(util_itree_t *tree, util_itree_t *node)
+static unagi_util_itree_t *
+util_itree_rebalance(unagi_util_itree_t *tree, unagi_util_itree_t *node)
 {
   int balance;
 
@@ -238,8 +238,8 @@ util_itree_rebalance(util_itree_t *tree, util_itree_t *node)
  *  was found or not.  Optionally, it can also return a pointer to the
  *  parent node.
  */
-static util_itree_t **
-util_itree_lookup(util_itree_t **tree, util_itree_t **parent, uint32_t key)
+static unagi_util_itree_t **
+util_itree_lookup(unagi_util_itree_t **tree, unagi_util_itree_t **parent, uint32_t key)
 {
   if((*tree) == NULL)
     return tree;
@@ -260,11 +260,11 @@ util_itree_lookup(util_itree_t **tree, util_itree_t **parent, uint32_t key)
  *
  * \return NULL in case of malloc error
  */
-util_itree_t *
-util_itree_insert(util_itree_t *tree, uint32_t key, void *value)
+unagi_util_itree_t *
+util_itree_insert(unagi_util_itree_t *tree, uint32_t key, void *value)
 {
-  util_itree_t *res = tree, *parent = NULL;
-  util_itree_t **node = util_itree_lookup(&res, &parent, key);
+  unagi_util_itree_t *res = tree, *parent = NULL;
+  unagi_util_itree_t **node = util_itree_lookup(&res, &parent, key);
 
   /* Already here, just returns the existing */
   if(*node)
@@ -284,9 +284,9 @@ util_itree_insert(util_itree_t *tree, uint32_t key, void *value)
  * \return NULL if key is not found.
  */
 void *
-util_itree_get(util_itree_t *tree, uint32_t key)
+util_itree_get(unagi_util_itree_t *tree, uint32_t key)
 {
-  util_itree_t **node = util_itree_lookup(&tree, NULL, key);
+  unagi_util_itree_t **node = util_itree_lookup(&tree, NULL, key);
 
   if((*node) != NULL)
     return (*node)->value;
@@ -298,12 +298,12 @@ util_itree_get(util_itree_t *tree, uint32_t key)
  *
  * \return the new root, NULL if the tree is empty
  */
-util_itree_t *
-util_itree_remove(util_itree_t *tree, uint32_t key)
+unagi_util_itree_t *
+util_itree_remove(unagi_util_itree_t *tree, uint32_t key)
 {
-  util_itree_t *parent = NULL;
-  util_itree_t **slot = util_itree_lookup(&tree, &parent, key);
-  util_itree_t *node = *slot;
+  unagi_util_itree_t *parent = NULL;
+  unagi_util_itree_t **slot = util_itree_lookup(&tree, &parent, key);
+  unagi_util_itree_t *node = *slot;
 
   if(node == NULL)
     return tree;
@@ -323,7 +323,7 @@ util_itree_remove(util_itree_t *tree, uint32_t key)
       /* Hard case... */
 
       /* Locate the node just before ours, in search order */
-      util_itree_t *new = node->left;
+      unagi_util_itree_t *new = node->left;
       for(; new->right; new = new->right);
 
       /* Ok, that node has to be but in our place */
@@ -352,19 +352,19 @@ util_itree_remove(util_itree_t *tree, uint32_t key)
  *  the freeing of values
  */
 void
-util_itree_free(util_itree_t *tree)
+unagi_util_itree_free(unagi_util_itree_t *tree)
 {
   if(tree == NULL)
     return;
 
-  util_itree_free(tree->left);
-  util_itree_free(tree->right);
+  unagi_util_itree_free(tree->left);
+  unagi_util_itree_free(tree->right);
   free(tree);
 }
 
 /** Get the size of a tree. */
 uint32_t
-util_itree_size(util_itree_t *tree)
+util_itree_size(unagi_util_itree_t *tree)
 {
   if(tree == NULL)
     return 0;
@@ -375,7 +375,7 @@ util_itree_size(util_itree_t *tree)
 #ifdef __DEBUG__
 /** Print the tree, inner function */
 static void
-util_itree_print_rec(FILE *stream, util_itree_t *tree, uint32_t indent)
+util_itree_print_rec(FILE *stream, unagi_util_itree_t *tree, uint32_t indent)
 {
   uint32_t i;
   for(i = 0; i < indent; i++)
@@ -391,26 +391,26 @@ util_itree_print_rec(FILE *stream, util_itree_t *tree, uint32_t indent)
     }
 }
 
-/** Print a tree (for debug purpose) */
+/** Print a tree (for unagi_debug purpose) */
 void
-util_itree_print(FILE *stream, util_itree_t *tree)
+unagi_util_itree_print(FILE *stream, unagi_util_itree_t *tree)
 {
   util_itree_print_rec(stream, tree, 0);
   fprintf(stream, "\n");
 }
 
-/* Perform a self-check on the tree (for debug purpose)
+/* Perform a self-check on the tree (for unagi_debug purpose)
    Write potential errors on stream, return 0 in case of success */
 int
-util_itree_check(FILE *stream, util_itree_t *tree)
+unagi_util_itree_check(FILE *stream, unagi_util_itree_t *tree)
 {
   int balance, local = 0, left, right, height;
 
   if(tree == NULL)
     return 0;
 
-  left = util_itree_check(stream, tree->left);
-  right = util_itree_check(stream, tree->right);
+  left = unagi_util_itree_check(stream, tree->left);
+  right = unagi_util_itree_check(stream, tree->right);
 
   balance = util_itree_balance(tree);
   if((balance >= 2) || (balance <= -2))

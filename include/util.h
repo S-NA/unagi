@@ -22,8 +22,8 @@
  *  \brief Miscellaneous helpers not related to X
  */
 
-#ifndef UTIL_H
-#define UTIL_H
+#ifndef UNAGI_UTIL_H
+#define UNAGI_UTIL_H
 
 #include <system.h>
 #include <stdint.h>
@@ -32,62 +32,62 @@
 # include <sys/types.h>
 #endif
 
-#define ssizeof(foo)            (ssize_t)sizeof(foo)
-#define countof(foo)            (ssizeof(foo) / ssizeof(foo[0]))
+#define unagi_ssizeof(foo)            (ssize_t)sizeof(foo)
+#define unagi_countof(foo)            (unagi_ssizeof(foo) / unagi_ssizeof(foo[0]))
 
-#define fatal(string, ...) _fatal(true,				\
-				  __LINE__, __FUNCTION__,	\
-				  string, ## __VA_ARGS__)
+#define unagi_fatal(string, ...) _unagi_fatal(true,                     \
+                                              __LINE__, __FUNCTION__,	\
+                                              string, ## __VA_ARGS__)
 
-#define fatal_no_exit(string, ...)			\
-  _fatal(false, __LINE__, __FUNCTION__, string, ## __VA_ARGS__)
+#define unagi_fatal_no_exit(string, ...)                                \
+  _unagi_fatal(false, __LINE__, __FUNCTION__, string, ## __VA_ARGS__)
 
-void _fatal(bool, int, const char *, const char *, ...)         \
+void _unagi_fatal(bool, int, const char *, const char *, ...)   \
   __attribute__ ((format(printf, 4, 5)));
 
-#define warn(string, ...) _warn(__LINE__,			\
-				__FUNCTION__,			\
-				string, ## __VA_ARGS__)
+#define unagi_warn(string, ...) _unagi_warn(__LINE__,                   \
+                                            __FUNCTION__,               \
+                                            string, ## __VA_ARGS__)
 
-void _warn(int, const char *, const char *, ...)
+void _unagi_warn(int, const char *, const char *, ...)
   __attribute__ ((format(printf, 3, 4)));
 
-#define debug(string, ...) _debug(__LINE__,			\
-				  __FUNCTION__,			\
-				  string, ## __VA_ARGS__)
+#define unagi_debug(string, ...) _unagi_debug(__LINE__,                 \
+                                              __FUNCTION__,             \
+                                              string, ## __VA_ARGS__)
 
-void _debug(int, const char *, const char *, ...)
+void _unagi_debug(int, const char *, const char *, ...)
   __attribute__ ((format(printf, 3, 4)));
 
-#define util_free(mem_pp)			   \
+#define unagi_util_free(mem_pp)			   \
   {						   \
-        typeof(**(mem_pp)) **__ptr = (mem_pp);     \
-        free(*__ptr);                              \
-        *__ptr = NULL;                             \
+    typeof(**(mem_pp)) **__ptr = (mem_pp);         \
+    free(*__ptr);                                  \
+    *__ptr = NULL;                                 \
   }
 
-typedef struct _util_itree_t
+typedef struct _unagi_util_itree_t
 {
   uint32_t key;
   int height;
   void *value;
-  struct _util_itree_t *left;
-  struct _util_itree_t *right;
-  struct _util_itree_t *parent;
-} util_itree_t;
+  struct _unagi_util_itree_t *left;
+  struct _unagi_util_itree_t *right;
+  struct _unagi_util_itree_t *parent;
+} unagi_util_itree_t;
 
-util_itree_t *util_itree_new(void);
-util_itree_t *util_itree_insert(util_itree_t *, uint32_t, void *);
-void *util_itree_get(util_itree_t *, uint32_t);
-util_itree_t *util_itree_remove(util_itree_t *, uint32_t);
-uint32_t util_itree_size(util_itree_t *);
-void util_itree_free(util_itree_t *);
+unagi_util_itree_t *util_itree_new(void);
+unagi_util_itree_t *util_itree_insert(unagi_util_itree_t *, uint32_t, void *);
+void *util_itree_get(unagi_util_itree_t *, uint32_t);
+unagi_util_itree_t *util_itree_remove(unagi_util_itree_t *, uint32_t);
+uint32_t util_itree_size(unagi_util_itree_t *);
+void unagi_util_itree_free(unagi_util_itree_t *);
 
 #ifdef __DEBUG__
 #include <stdio.h>
 
-void util_itree_print(FILE *, util_itree_t *);
-int util_itree_check(FILE *, util_itree_t *);
+void unagi_util_itree_print(FILE *, unagi_util_itree_t *);
+int unagi_util_itree_check(FILE *, unagi_util_itree_t *);
 #endif /* __DEBUG__ */
 
-#endif /* UTIL_H */
+#endif /* UNAGI_UTIL_H */

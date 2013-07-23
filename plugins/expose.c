@@ -54,14 +54,14 @@
  *      also set OverrideRedirect attribute  to ensure that the window
  *      manager will not care about them anymore.
  *
- *   4/ For each window, create  a new 'window_t' object which will be
- *      then given to 'window_paint_all' function of the core code. If
- *      the window  needs to be  rescaled (e.g.  when the  window does
- *      not  fit  the  slot),  create  a  new  Image,  Pixmap  and  GC
- *      ('_expose_prepare_windows'). Then (and each time the window is
- *      repainted), get the Image of  the original window and get each
- *      pixel  which   will  then  be   put  on  the   rescaled  Image
- *      ('_expose_update_scale_pixmap')  using  a Gaussian-filter-like
+ *   4/ For each window, create a  new 'unagi_window_t' object which will be
+ *      then given  to 'unagi_window_paint_all'  function of  the core
+ *      code.  If the  window needs  to  be rescaled  (e.g.  when  the
+ *      window does not fit the slot),  create a new Image, Pixmap and
+ *      GC ('_expose_prepare_windows'). Then (and each time the window
+ *      is repainted),  get the Image  of the original window  and get
+ *      each  pixel which  will  then  be put  on  the rescaled  Image
+ *      ('_expose_update_scale_pixmap')  using a  Gaussian-filter-like
  *      rescaled algorithm.
  */
 
@@ -100,10 +100,10 @@
 typedef struct
 {
   /** Rescaled window */
-  window_t *window;
+  unagi_window_t *window;
   /** If the window was unmapped before enabling the plugin */
   bool was_unmapped;
-} _expose_scale_window_t;
+} _expose_scale_unagi_window_t;
 
 /** Each window is contained within a slot */
 typedef struct
@@ -111,9 +111,9 @@ typedef struct
   /** Slot geometry */
   xcb_rectangle_t extents;
   /** Nearest window associated with this slot */
-  window_t *window;
+  unagi_window_t *window;
   /** Rescaled window */
-  _expose_scale_window_t scale_window;
+  _expose_scale_unagi_window_t scale_window;
 } _expose_window_slot_t;
 
 /** Atoms required for this plugin */
@@ -202,9 +202,9 @@ _expose_update_atoms_values(_expose_atoms_t *atoms)
 				      atoms->kind,			\
 				      NULL))				\
 	{								\
-	  warn("Plugin cannot be enabled: Cannot get %s (check with "   \
+	  unagi_warn("Plugin cannot be enabled: Cannot get %s (check with "   \
                "'xprop -root')", #atom_name);                           \
-	  util_free(&atoms->kind);					\
+	  unagi_util_free(&atoms->kind);					\
 	}								\
 									\
       /* Reset the cookie sequence for the next request */		\
@@ -246,7 +246,7 @@ expose_check_requirements(void)
 
   if(error)
     {
-      warn("Plugin disabled: Can't grab selected key");
+      unagi_warn("Plugin disabled: Can't grab selected key");
       free(error);
       return false;
     }
@@ -313,7 +313,7 @@ _expose_crtc_get_window_visible_ratio(xcb_randr_get_crtc_info_reply_t *crtc_info
 }
 
 static void
-_expose_crtc_assign_window(window_t *window)
+_expose_crtc_assign_window(unagi_window_t *window)
 {
   float max_ratio = 0.0, ratio;
   _expose_crtc_window_slots_t *assigned_crtc = NULL;
@@ -418,7 +418,7 @@ _expose_assign_windows_to_slots(_expose_crtc_window_slots_t *crtc_slots)
 
   struct
   {
-    window_t *window;
+    unagi_window_t *window;
     /* Coordinates of the window center */
     int16_t x, y;
   } windows[crtc_slots->nwindows];
@@ -427,7 +427,7 @@ _expose_assign_windows_to_slots(_expose_crtc_window_slots_t *crtc_slots)
      to a slot */
   for(uint32_t i = 0; i < crtc_slots->nwindows; i++)
     {
-      window_t *w = slots[i].window;
+      unagi_window_t *w = slots[i].window;
       windows[i].window = w;
       windows[i].x = (int16_t) (w->geometry->x + w->geometry->width / 2);
       windows[i].y = (int16_t) (w->geometry->y + w->geometry->height / 2);
@@ -522,7 +522,7 @@ _expose_assign_windows_to_slots(_expose_crtc_window_slots_t *crtc_slots)
  */
 static void
 _expose_prepare_windows(_expose_crtc_window_slots_t *crtc_slots,
-                        window_t *scale_window_prev)
+                        unagi_window_t *scale_window_prev)
 {
   _expose_window_slot_t *slot;
   for(unsigned int i = 0; i < crtc_slots->nwindows; i++)
@@ -531,19 +531,19 @@ _expose_prepare_windows(_expose_crtc_window_slots_t *crtc_slots,
 
       const uint16_t window_width = window_width_with_border(slot->window->geometry);
       const uint16_t window_height = window_height_with_border(slot->window->geometry);
-      window_t *scale_window;
+      unagi_window_t *scale_window;
 
       /* If the window does not need to be rescaled, just use existing window */
       if(!_expose_window_need_rescaling(&slot->extents, window_width, window_height))
 	{
-	  debug("No need to scale %jx", (uintmax_t) slot->window->id);
-          scale_window = malloc(sizeof(window_t));
-          memcpy(scale_window, slot->window, sizeof(window_t));
+	  unagi_debug("No need to scale %jx", (uintmax_t) slot->window->id);
+          scale_window = malloc(sizeof(unagi_window_t));
+          memcpy(scale_window, slot->window, sizeof(unagi_window_t));
           scale_window->next = NULL;
 	}
       else
         {
-          scale_window = calloc(1, sizeof(window_t));
+          scale_window = calloc(1, sizeof(unagi_window_t));
           scale_window->id = slot->window->id;
           scale_window->attributes = slot->window->attributes;
           scale_window->rendering = slot->window->rendering;
@@ -577,7 +577,7 @@ _expose_prepare_windows(_expose_crtc_window_slots_t *crtc_slots,
           scale_window->transform_matrix[1][1] = 1;
           scale_window->transform_matrix[2][2] = ratio;
 
-          scale_window->transform_status = WINDOW_TRANSFORM_STATUS_REQUIRED;
+          scale_window->transform_status = UNAGI_WINDOW_TRANSFORM_STATUS_REQUIRED;
         }
 
       scale_window->damaged = true;
@@ -595,11 +595,11 @@ _expose_prepare_windows(_expose_crtc_window_slots_t *crtc_slots,
     {
       slot = crtc_slots->slots[i];
 
-      debug("slot: x=%jd, y=%jd, width=%ju, height=%ju",
+      unagi_debug("slot: x=%jd, y=%jd, width=%ju, height=%ju",
 	    (intmax_t) slot->extents.x, (intmax_t) slot->extents.y,
 	    (uintmax_t) slot->extents.width, (uintmax_t) slot->extents.height);
 
-      debug("scale_window: id=%jx, x=%jd, y=%jd, width=%ju, height=%ju",
+      unagi_debug("scale_window: id=%jx, x=%jd, y=%jd, width=%ju, height=%ju",
 	    (uintmax_t) slot->scale_window.window->id,
 	    (intmax_t) slot->scale_window.window->geometry->x,
 	    (intmax_t) slot->scale_window.window->geometry->y,
@@ -635,23 +635,23 @@ _expose_plugin_disable(void)
               /* Unmap the window which were previously mapped and also
                  restore override redirect */
               if(slot->scale_window.was_unmapped)
-                window_get_invisible_window_pixmap_finalise(slot->window);
+                unagi_window_get_invisible_window_pixmap_finalise(slot->window);
 
               /* Free memory allocated only for Windows *actually* scaled */
               if(slot->scale_window.window->transform_status !=
-                 WINDOW_TRANSFORM_STATUS_NONE)
+                 UNAGI_WINDOW_TRANSFORM_STATUS_NONE)
                 {
                   (*globalconf.rendering->free_window)(slot->window);
-                  util_free(&(slot->scale_window.window->geometry));
+                  unagi_util_free(&(slot->scale_window.window->geometry));
                 }
 
-              util_free(&(slot->scale_window.window));
+              unagi_util_free(&(slot->scale_window.window));
             }
 
-          util_free(&_expose_global.crtc_slots[crtc_n].slots);
+          unagi_util_free(&_expose_global.crtc_slots[crtc_n].slots);
         }
 
-      util_free(&_expose_global.crtc_slots);
+      unagi_util_free(&_expose_global.crtc_slots);
       _expose_global.enabled = false;
 
       /* Force repaint of the screen as the plugin is now disabled */
@@ -680,7 +680,7 @@ _expose_plugin_enable(const uint32_t nwindows)
     }
 
   for(uint32_t i = 0; i < nwindows; i++)
-    _expose_crtc_assign_window(window_list_get(_expose_global.atoms.client_list->windows[i]));
+    _expose_crtc_assign_window(unagi_window_list_get(_expose_global.atoms.client_list->windows[i]));
 
   xcb_grab_server(globalconf.connection);
 
@@ -699,7 +699,7 @@ _expose_plugin_enable(const uint32_t nwindows)
           if(slot->window->attributes->map_state != XCB_MAP_STATE_VIEWABLE &&
              !slot->scale_window.was_unmapped)
             {
-              window_get_invisible_window_pixmap(slot->window);
+              unagi_window_get_invisible_window_pixmap(slot->window);
               slot->scale_window.was_unmapped = true;
             }
         }
@@ -709,7 +709,7 @@ _expose_plugin_enable(const uint32_t nwindows)
    *  \todo get only MapNotify? */
   xcb_aux_sync(globalconf.connection);
   
-  event_handle_poll_loop(event_handle);
+  unagi_event_handle_poll_loop(unagi_event_handle);
 
   xcb_ungrab_server(globalconf.connection);
 
@@ -733,7 +733,7 @@ _expose_plugin_enable(const uint32_t nwindows)
 				XCB_CURRENT_TIME, XCB_GRAB_MODE_ASYNC,
 				XCB_GRAB_MODE_ASYNC);
 
-  window_t *prev_window = NULL;
+  unagi_window_t *prev_window = NULL;
   for(unsigned int i = 0; i < globalconf.crtc_len; i++)
     {
       _expose_crtc_window_slots_t *crtc_slots = _expose_global.crtc_slots + i;
@@ -750,7 +750,7 @@ _expose_plugin_enable(const uint32_t nwindows)
   if(!grab_pointer_reply || grab_pointer_reply->status != XCB_GRAB_STATUS_SUCCESS ||
      !grab_keyboard_reply || grab_keyboard_reply->status != XCB_GRAB_STATUS_SUCCESS)
     {
-      warn("Can't grab the pointer and/or the keyboard");
+      unagi_warn("Can't grab the pointer and/or the keyboard");
       _expose_plugin_disable();
     }
   else
@@ -773,21 +773,21 @@ _expose_plugin_enable(const uint32_t nwindows)
  */
 static void
 expose_event_handle_key_release(xcb_key_release_event_t *event,
-				window_t *window __attribute__((unused)))
+				unagi_window_t *window __attribute__((unused)))
 {
-  if(key_getkeysym(event->detail, event->state) != PLUGIN_KEY)
+  if(unagi_key_getkeysym(event->detail, event->state) != PLUGIN_KEY)
     return;
 
   if(_expose_global.enabled)
     _expose_plugin_disable();
   else
     {
-      if(!atoms_is_supported(globalconf.ewmh._NET_CLIENT_LIST) ||
-         !atoms_is_supported(globalconf.ewmh._NET_ACTIVE_WINDOW) ||
-         !atoms_is_supported(globalconf.ewmh._NET_CURRENT_DESKTOP) ||
-         !atoms_is_supported(globalconf.ewmh._NET_WM_DESKTOP))
+      if(!unagi_atoms_is_supported(globalconf.ewmh._NET_CLIENT_LIST) ||
+         !unagi_atoms_is_supported(globalconf.ewmh._NET_ACTIVE_WINDOW) ||
+         !unagi_atoms_is_supported(globalconf.ewmh._NET_CURRENT_DESKTOP) ||
+         !unagi_atoms_is_supported(globalconf.ewmh._NET_WM_DESKTOP))
         {
-          warn("Plugin cannot be enabled: Required atoms _NET_CLIENT_LIST, "
+          unagi_warn("Plugin cannot be enabled: Required atoms _NET_CLIENT_LIST, "
                "_NET_ACTIVE_WINDOW, _NET_CURRENT_DESKTOP and/or _NET_WM_DESKTOP "
                "are not in _NET_SUPPORTED (check with 'xprop -root')");
 
@@ -819,7 +819,7 @@ expose_event_handle_key_release(xcb_key_release_event_t *event,
  */
 static inline bool
 _expose_in_window(const int16_t x, const int16_t y,
-		  const window_t *window)
+		  const unagi_window_t *window)
 {
   return x >= window->geometry->x &&
     x < (int16_t) (window->geometry->x + window_width_with_border(window->geometry)) &&
@@ -834,7 +834,7 @@ _expose_in_window(const int16_t x, const int16_t y,
  * \param window The window object to show
  */
 static void
-_expose_show_selected_window(const window_t *window)
+_expose_show_selected_window(const unagi_window_t *window)
 {
   if(window->id == *_expose_global.atoms.active_window)
     return;
@@ -846,7 +846,7 @@ _expose_show_selected_window(const window_t *window)
                                     &window_desktop,
                                     NULL))
     {
-      warn("Could not get the current desktop of selected Window");
+      unagi_warn("Could not get the current desktop of selected Window");
       return;
     }
 
@@ -863,7 +863,7 @@ _expose_show_selected_window(const window_t *window)
                                         XCB_CURRENT_TIME,
                                         XCB_NONE);
 
-  window_map_raised(window);
+  unagi_window_map_raised(window);
 }
 
 /** Handle X  ButtonRelease event used  when the user choose  a window
@@ -873,7 +873,7 @@ _expose_show_selected_window(const window_t *window)
  */
 static void
 expose_event_handle_button_release(xcb_button_release_event_t *event,
-				   window_t *unused __attribute__ ((unused)))
+				   unagi_window_t *unused __attribute__ ((unused)))
 {
   if(!_expose_global.enabled)
     return;
@@ -889,7 +889,7 @@ expose_event_handle_button_release(xcb_button_release_event_t *event,
           if(_expose_in_window(event->root_x, event->root_y,
                                slot->scale_window.window))
             {
-              window_t *window = slot->window;
+              unagi_window_t *window = slot->window;
               _expose_plugin_disable();
               _expose_show_selected_window(window);
               return;
@@ -927,7 +927,7 @@ _expose_do_event_handle_property_notify(xcb_get_property_cookie_t (*get_property
  */
 static void
 expose_event_handle_property_notify(xcb_property_notify_event_t *event,
-				    window_t *window __attribute__((unused)))
+				    unagi_window_t *window __attribute__((unused)))
 {
   if(event->atom == globalconf.ewmh._NET_CLIENT_LIST)
     _expose_do_event_handle_property_notify(xcb_ewmh_get_client_list_unchecked,
@@ -947,7 +947,7 @@ expose_event_handle_property_notify(xcb_property_notify_event_t *event,
  *
  * \return The beginning of the scaled windows list
  */
-static window_t *
+static unagi_window_t *
 expose_render_windows(void)
 {
   if(!_expose_global.enabled)
@@ -959,7 +959,7 @@ expose_render_windows(void)
                                                         globalconf.screen->root),
                             NULL);
 
-  window_t *window = _expose_global.crtc_slots[0].slots->scale_window.window;
+  unagi_window_t *window = _expose_global.crtc_slots[0].slots->scale_window.window;
   while(window != NULL)
     {
       if(query_pointer_reply->root_x >= window->geometry->x &&
@@ -1001,7 +1001,7 @@ expose_destructor(void)
 }
 
 /** Structure holding all the functions addresses */
-plugin_vtable_t plugin_vtable = {
+unagi_plugin_vtable_t plugin_vtable = {
   .name = "expose",
   .events = {
     NULL,

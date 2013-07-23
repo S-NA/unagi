@@ -21,8 +21,8 @@
  *  \brief Common system includes based on Autoconf macros
  */
 
-#ifndef COMMON_H
-#define COMMON_H
+#ifndef UNAGI_COMMON_H
+#define UNAGI_COMMON_H
 
 #ifdef HAVE_STDBOOL_H
 # include <stdbool.h>

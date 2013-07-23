@@ -34,9 +34,9 @@
 #include "structs.h"
 
 /** Atoms used but not defined in either ICCCM and EWMH */
-xcb_atom_t _NET_WM_WINDOW_OPACITY;
-xcb_atom_t _XROOTPMAP_ID;
-xcb_atom_t _XSETROOT_ID;
+xcb_atom_t UNAGI__NET_WM_WINDOW_OPACITY;
+xcb_atom_t UNAGI__XROOTPMAP_ID;
+xcb_atom_t UNAGI__XSETROOT_ID;
 
 /** Structure defined on purpose to be able to send all the InternAtom
     requests */
@@ -54,21 +54,21 @@ typedef struct {
 /** Prepare  InternAtom  request  (EWMH  atoms are  initialised  using
     xcb-util/ewmh library) */
 static atom_t atoms_list[] = {
-  { &_NET_WM_WINDOW_OPACITY, { 0 }, sizeof("_NET_WM_WINDOW_OPACITY") - 1, "_NET_WM_WINDOW_OPACITY" },
-  { &_XROOTPMAP_ID, { 0 }, sizeof("_XROOTPMAP_ID") - 1, "_XROOTPMAP_ID" },
-  { &_XSETROOT_ID, { 0 }, sizeof("_XSETROOT_ID") - 1, "_XSETROOT_ID" }
+  { &UNAGI__NET_WM_WINDOW_OPACITY, { 0 }, sizeof("_NET_WM_WINDOW_OPACITY") - 1, "_NET_WM_WINDOW_OPACITY" },
+  { &UNAGI__XROOTPMAP_ID, { 0 }, sizeof("_XROOTPMAP_ID") - 1, "_XROOTPMAP_ID" },
+  { &UNAGI__XSETROOT_ID, { 0 }, sizeof("_XSETROOT_ID") - 1, "_XSETROOT_ID" }
 };
 
-static const ssize_t atoms_list_len = countof(atoms_list);
+static const ssize_t atoms_list_len = unagi_countof(atoms_list);
 
 /** Array containing  pointers to  background image property  atoms of
  *  the  root window, the  value of  these atoms  are the  Pixmap XID,
  *  these  atoms  are  not  standardized  but commonly  used  in  most
  *  software responsible to set the root window background Pixmap
  */
-const xcb_atom_t *background_properties_atoms[] = {
-  &_XROOTPMAP_ID,
-  &_XSETROOT_ID,
+const xcb_atom_t *unagi_background_properties_atoms[] = {
+  &UNAGI__XROOTPMAP_ID,
+  &UNAGI__XSETROOT_ID,
   NULL
 };
 
@@ -77,7 +77,7 @@ const xcb_atom_t *background_properties_atoms[] = {
  * @return The EWMH InternAtom cookies
  */
 xcb_intern_atom_cookie_t *
-atoms_init(void)
+unagi_atoms_init(void)
 {
   for(int atom_n = 0; atom_n < atoms_list_len; atom_n++)
     atoms_list[atom_n].cookie = xcb_intern_atom_unchecked(globalconf.connection,
@@ -95,7 +95,7 @@ atoms_init(void)
  * \return true on success, false otherwise
  */
 bool
-atoms_init_finalise(xcb_intern_atom_cookie_t *ewmh_cookies)
+unagi_atoms_init_finalise(xcb_intern_atom_cookie_t *ewmh_cookies)
 {
   if(!xcb_ewmh_init_atoms_replies(&globalconf.ewmh, ewmh_cookies, NULL))
     goto init_atoms_error;
@@ -123,7 +123,7 @@ atoms_init_finalise(xcb_intern_atom_cookie_t *ewmh_cookies)
   return true;
 
  init_atoms_error: 
-  fatal("Cannot initialise atoms");
+  unagi_fatal("Cannot initialise atoms");
   return false;
 }
 
@@ -135,10 +135,10 @@ atoms_init_finalise(xcb_intern_atom_cookie_t *ewmh_cookies)
  *         background image Pixmap, false otherwise
  */
 bool
-atoms_is_background_atom(const xcb_atom_t atom)
+unagi_atoms_is_background_atom(const xcb_atom_t atom)
 {
-  for(int atom_n = 0; background_properties_atoms[atom_n]; atom_n++)
-    if(atom == *background_properties_atoms[atom_n])
+  for(int atom_n = 0; unagi_background_properties_atoms[atom_n]; atom_n++)
+    if(atom == *unagi_background_properties_atoms[atom_n])
       return true;
 
   return false;
@@ -150,7 +150,7 @@ atoms_is_background_atom(const xcb_atom_t atom)
  * \param event The X PropertyNotify event received
  */
 void
-atoms_update_supported(const xcb_property_notify_event_t *event)
+unagi_atoms_update_supported(const xcb_property_notify_event_t *event)
 {
   if(globalconf.atoms_supported.initialised)
     {
@@ -172,7 +172,7 @@ atoms_update_supported(const xcb_property_notify_event_t *event)
  * \return true if the Atom is supported
  */
 bool
-atoms_is_supported(const xcb_atom_t atom)
+unagi_atoms_is_supported(const xcb_atom_t atom)
 {
   /* Get the _NET_SUPPORTED  reply if a request has  been sent but not
      already processed */

@@ -32,8 +32,8 @@
  *  given below.
  */
 
-#ifndef RENDERING_H
-#define RENDERING_H
+#ifndef UNAGI_RENDERING_H
+#define UNAGI_RENDERING_H
 
 #include <stdbool.h>
 #include <stdint.h>
@@ -52,7 +52,7 @@ typedef struct
   /** Paint the root background to the root window */
   void (*paint_background) (void);
   /** Paint a given window */
-  void (*paint_window) (window_t *);
+  void (*paint_window) (unagi_window_t *);
   /** Paint all the windows on the root window */
   void (*paint_all) (void);
   /** Check whether the given request is backend-specific */
@@ -62,12 +62,12 @@ typedef struct
   /** Get the error label of a backend error */
   const char *(*get_error_label) (const uint8_t);
   /** Free resources associated with a window when the Pixmap is freed */
-  void (*free_window_pixmap) (window_t *);
+  void (*free_window_pixmap) (unagi_window_t *);
   /** Free resources associated with a window */
-  void (*free_window) (window_t *);
-} rendering_t;
+  void (*free_window) (unagi_window_t *);
+} unagi_rendering_t;
 
-bool rendering_load(void);
-void rendering_unload(void);
+bool unagi_rendering_load(void);
+void unagi_rendering_unload(void);
 
 #endif

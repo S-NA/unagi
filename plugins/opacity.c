@@ -21,8 +21,8 @@
  *  \brief Opacity effect plugin
  *
  *  This  plugin handles windows  opacity.  It  relies on  a structure
- *  containing,  for   each  mapped  (or   viewable)  'window_t',  its
- *  'opacity' and 'cookie', namely 'opacity_window_t'.
+ *  containing,  for   each  mapped  (or   viewable)  'unagi_window_t',  its
+ *  'opacity' and 'cookie', namely 'opacity_unagi_window_t'.
  *
  *  The  cookie  is the  GetProperty  request  sent  on MapNotify  and
  *  PropertyNotify events  and whose reply  is only got  when actually
@@ -45,23 +45,23 @@
 #define OPACITY_OPAQUE 0xffffffff
 
 /** Hold global variables of this plugin */
-typedef struct _opacity_window_t
+typedef struct _opacity_unagi_window_t
 {
   /** The list of windows with opacity */
-  window_t *window;
+  unagi_window_t *window;
   /** The GetProperty request cookie for this window */
   xcb_get_property_cookie_t cookie;
   /** Opacity value */
   uint32_t opacity;
   /** Pointer to the next window with opacity set */
-  struct _opacity_window_t *next;
-} opacity_window_t;
+  struct _opacity_unagi_window_t *next;
+} opacity_unagi_window_t;
 
-opacity_window_t *_opacity_windows = NULL;
+opacity_unagi_window_t *_opacity_windows = NULL;
 
-/** Send the request to get the _NET_WM_WINDOW_OPACITY Atom of a given
+/** Send the request to get the UNAGI__NET_WM_WINDOW_OPACITY Atom of a given
  *  window     as    EWMH     specification     does    not     define
- *  _NET_WM_WINDOW_OPACITY
+ *  UNAGI__NET_WM_WINDOW_OPACITY
  *
  * \param window_id The Window XID
  * \return The GetProperty cookie associated with the request
@@ -71,7 +71,7 @@ _opacity_get_property(xcb_window_t window_id)
 {
   xcb_get_property_cookie_t cookie =
     xcb_get_property_unchecked(globalconf.connection, 0, window_id,
-                               _NET_WM_WINDOW_OPACITY, XCB_ATOM_CARDINAL,
+                               UNAGI__NET_WM_WINDOW_OPACITY, XCB_ATOM_CARDINAL,
                                0, 1);
 
   /* Flush to  make sure the request  is sent ASAP and  avoid blocking
@@ -102,7 +102,7 @@ _opacity_get_property_reply(xcb_get_property_cookie_t cookie)
   else
     opacity = *((uint32_t *) xcb_get_property_value(reply));
 
-  debug("window_get_opacity_property_reply: opacity: %x", opacity);
+  unagi_debug("window_get_opacity_property_reply: opacity: %x", opacity);
 
   free(reply);
   return opacity;
@@ -113,10 +113,10 @@ _opacity_get_property_reply(xcb_get_property_cookie_t cookie)
  * \param window The window to be added
  * \return The newly allocated opacity window
  */
-static opacity_window_t *
-_opacity_window_new(window_t *window)
+static opacity_unagi_window_t *
+_opacity_window_new(unagi_window_t *window)
 {
-  opacity_window_t *new_opacity_window = calloc(1, sizeof(opacity_window_t));
+  opacity_unagi_window_t *new_opacity_window = calloc(1, sizeof(opacity_unagi_window_t));
   new_opacity_window->window = window;
 
   /* Consider the window  as opaque by default but  send a GetProperty
@@ -129,7 +129,7 @@ _opacity_window_new(window_t *window)
 }
 
 static inline void
-_opacity_free_property_reply(opacity_window_t *opacity_window)
+_opacity_free_property_reply(opacity_unagi_window_t *opacity_window)
 {
   if(opacity_window->cookie.sequence != 0)
     free(xcb_get_property_reply(globalconf.connection,
@@ -138,7 +138,7 @@ _opacity_free_property_reply(opacity_window_t *opacity_window)
 }
 
 static inline void
-_opacity_free_window(opacity_window_t *opacity_window)
+_opacity_free_window(opacity_unagi_window_t *opacity_window)
 {
   _opacity_free_property_reply(opacity_window);
   free(opacity_window);
@@ -151,9 +151,9 @@ _opacity_free_window(opacity_window_t *opacity_window)
  */
 static void
 opacity_window_manage_existing(const int nwindows,
-			       window_t **windows)
+			       unagi_window_t **windows)
 {
-  opacity_window_t *opacity_windows_tail = NULL;
+  opacity_unagi_window_t *opacity_windows_tail = NULL;
 
   for(int nwindow = 0; nwindow < nwindows; nwindow++)
     {
@@ -162,7 +162,7 @@ opacity_window_manage_existing(const int nwindows,
 	 windows[nwindow]->attributes->map_state != XCB_MAP_STATE_VIEWABLE)
 	continue;
 
-      debug("Managing window %jx", (uintmax_t) windows[nwindow]->id);
+      unagi_debug("Managing window %jx", (uintmax_t) windows[nwindow]->id);
 
       if(!_opacity_windows)
 	{
@@ -183,9 +183,9 @@ opacity_window_manage_existing(const int nwindows,
  * \return The window opacity as a 16-bits digit (ARGB)
  */
 static uint16_t
-opacity_get_window_opacity(const window_t *window)
+opacity_get_window_opacity(const unagi_window_t *window)
 {
-  opacity_window_t *opacity_window;
+  opacity_unagi_window_t *opacity_window;
   for(opacity_window = _opacity_windows;
       opacity_window && opacity_window->window != window;
       opacity_window = opacity_window->next)
@@ -214,9 +214,9 @@ opacity_get_window_opacity(const window_t *window)
  */
 static void
 opacity_event_handle_map_notify(xcb_map_notify_event_t *event,
-				window_t *window)
+				unagi_window_t *window)
 {
-  debug("MapNotify: event=%jx, window=%jx",
+  unagi_debug("MapNotify: event=%jx, window=%jx",
 	(uintmax_t) event->event, (uintmax_t) event->window);
 
   /* There may be no windows mapped yet */
@@ -224,7 +224,7 @@ opacity_event_handle_map_notify(xcb_map_notify_event_t *event,
     _opacity_windows = _opacity_window_new(window);
   else
     {
-      for(opacity_window_t *old__opacity_windows_tail = _opacity_windows;;
+      for(opacity_unagi_window_t *old__opacity_windows_tail = _opacity_windows;;
 	  old__opacity_windows_tail = old__opacity_windows_tail->next)
 	if(!old__opacity_windows_tail->next)
 	  {
@@ -233,7 +233,7 @@ opacity_event_handle_map_notify(xcb_map_notify_event_t *event,
 	  }
     }
 
-  window_register_notify(window);
+  unagi_window_register_notify(window);
 }
 
 /** Handler  for PropertyNotify  event which  only send  a GetProperty
@@ -244,17 +244,17 @@ opacity_event_handle_map_notify(xcb_map_notify_event_t *event,
  */
 static void
 opacity_event_handle_property_notify(xcb_property_notify_event_t *event,
-				     window_t *window)
+				     unagi_window_t *window)
 {
   /* Update the opacity atom if any */
-  if(event->atom != _NET_WM_WINDOW_OPACITY)
+  if(event->atom != UNAGI__NET_WM_WINDOW_OPACITY)
     return;
 
-  debug("PropertyNotify: window=%jx, atom=%ju",
+  unagi_debug("PropertyNotify: window=%jx, atom=%ju",
 	(uintmax_t) event->window, (uintmax_t) event->atom);
 
   /* Get the corresponding opacity window */
-  opacity_window_t *opacity_window;
+  opacity_unagi_window_t *opacity_window;
   for(opacity_window = _opacity_windows;
       opacity_window && opacity_window->window != window;
       opacity_window = opacity_window->next)
@@ -283,7 +283,7 @@ opacity_event_handle_property_notify(xcb_property_notify_event_t *event,
     }
       
   /* Force redraw of the window as the opacity has changed */
-  display_add_damaged_region(&window->region, false);
+  unagi_display_add_damaged_region(&window->region, false);
 }
 
 /** Handle  for  UnmapNotify,  only  responsible to  free  the  memory
@@ -296,12 +296,12 @@ opacity_event_handle_property_notify(xcb_property_notify_event_t *event,
  */
 static void
 opacity_event_handle_unmap_notify(xcb_unmap_notify_event_t *event __attribute__((unused)),
-				  window_t *window)
+				  unagi_window_t *window)
 {
   if(!_opacity_windows)
     return;
 
-  opacity_window_t *old_opacity_window = NULL;
+  opacity_unagi_window_t *old_opacity_window = NULL;
 
   if(_opacity_windows->window == window)
     {
@@ -310,7 +310,7 @@ opacity_event_handle_unmap_notify(xcb_unmap_notify_event_t *event __attribute__(
     }
   else
     {
-      opacity_window_t *opacity_window;
+      opacity_unagi_window_t *opacity_window;
       for(opacity_window = _opacity_windows;
 	  opacity_window->next && opacity_window->next->window != window;
 	  opacity_window = opacity_window->next)
@@ -330,8 +330,8 @@ opacity_event_handle_unmap_notify(xcb_unmap_notify_event_t *event __attribute__(
 static void __attribute__((destructor))
 opacity_destructor(void)
 {
-  opacity_window_t *opacity_window = _opacity_windows;
-  opacity_window_t *opacity_window_next;
+  opacity_unagi_window_t *opacity_window = _opacity_windows;
+  opacity_unagi_window_t *opacity_window_next;
 
   while(opacity_window != NULL)
     {
@@ -342,7 +342,7 @@ opacity_destructor(void)
 }
 
 /** Structure holding all the functions addresses */
-plugin_vtable_t plugin_vtable = {
+unagi_plugin_vtable_t plugin_vtable = {
   .name = "opacity",
   .events = {
     NULL,

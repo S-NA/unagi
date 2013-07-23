@@ -34,18 +34,18 @@
  * \return True if a rendering backend was successfully loaded
  */
 bool
-rendering_load(void)
+unagi_rendering_load(void)
 {
   /* Clear any existing error */
   dlerror();
 
-  globalconf.rendering_dlhandle = plugin_common_dlopen(globalconf.rendering_dir,
-						       cfg_getstr(globalconf.cfg, "rendering"));
+  globalconf.rendering_dlhandle = unagi_plugin_common_dlopen(globalconf.rendering_dir,
+                                                             cfg_getstr(globalconf.cfg, "rendering"));
 
   char *error;
   if((error = dlerror()))
     {
-      fatal_no_exit("Can't load rendering backend: %s", error);
+      unagi_fatal_no_exit("Can't load rendering backend: %s", error);
       return false;
     }
 
@@ -55,7 +55,7 @@ rendering_load(void)
 
   if((error = dlerror()))
     {
-      fatal_no_exit("%s", error);
+      unagi_fatal_no_exit("%s", error);
       return false;
     }
 
@@ -64,7 +64,7 @@ rendering_load(void)
 
 /** Unload the rendering backend */
 void
-rendering_unload(void)
+unagi_rendering_unload(void)
 {
   if(!globalconf.rendering_dlhandle)
     return;

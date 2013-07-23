@@ -21,8 +21,8 @@
  *  \brief General structures definitions
  */
 
-#ifndef STRUCTS_H
-#define STRUCTS_H
+#ifndef UNAGI_STRUCTS_H
+#define UNAGI_STRUCTS_H
 
 #include <xcb/xcb.h>
 #include <xcb/xcb_keysyms.h>
@@ -40,7 +40,7 @@
 #include "util.h"
 
 /** Hold information related to the X extension */
-typedef struct _display_extensions_t
+typedef struct _unagi_display_extensions_t
 {
   /** The Composite extension information */
   const xcb_query_extension_reply_t *composite;
@@ -50,19 +50,19 @@ typedef struct _display_extensions_t
   const xcb_query_extension_reply_t *damage;
   /** The RandR extension information */
   const xcb_query_extension_reply_t *randr;
-} display_extensions_t;
+} unagi_display_extensions_t;
 
 /** Repaint interval to 20ms (50Hz) if  it could not have been obtained
     from RandR */
-#define DEFAULT_REPAINT_INTERVAL 0.02
+#define UNAGI_DEFAULT_REPAINT_INTERVAL 0.02
 
 /** Minimum value for the repaint interval, 10ms (200Hz), used on
     startup if the refresh rate is too high and when determining the
     repaint interval according to the painting time */
-#define MINIMUM_REPAINT_INTERVAL 0.01
+#define UNAGI_MINIMUM_REPAINT_INTERVAL 0.01
 
 /** Global structure holding variables used all across the program */
-typedef struct _conf_t
+typedef struct _unagi_conf_t
 {
   /** libev event loop */
   struct ev_loop *event_loop;
@@ -94,13 +94,13 @@ typedef struct _conf_t
   /** EWMH-related information */
   xcb_ewmh_connection_t ewmh;
   /** The X extensions information */
-  display_extensions_t extensions;
+  unagi_display_extensions_t extensions;
   /** The Window specific to the compositing manager */
   xcb_window_t cm_window;
   /** The list of all windows as objects */
-  window_t *windows;
+  unagi_window_t *windows;
   /** Binary Trees used for lookups (The list is still useful for stack order) */
-  util_itree_t *windows_itree;
+  unagi_util_itree_t *windows_itree;
   /** Damaged region which must be repainted */
   xcb_xfixes_region_t damaged;
   bool force_repaint;
@@ -125,12 +125,12 @@ typedef struct _conf_t
   /** dlopen() opaque structure for the rendering backend */
   void *rendering_dlhandle;
   /** */
-  rendering_t *rendering;
+  unagi_rendering_t *rendering;
 
   /** Path to the effects plugins directory */
   char *plugins_dir;
   /** List of plugins enabled in the configuration file */
-  plugin_t *plugins;
+  unagi_plugin_t *plugins;
 
   /** Keyboard masks values meaningful on KeyPress/KeyRelease event */
   struct
@@ -141,8 +141,8 @@ typedef struct _conf_t
     uint16_t modeswitch;
   } key_masks;
 
-} conf_t;
+} unagi_conf_t;
 
-extern conf_t globalconf;
+extern unagi_conf_t globalconf;
 
 #endif

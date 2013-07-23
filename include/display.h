@@ -21,8 +21,8 @@
  *  \brief Display management run on startup
  */
 
-#ifndef INIT_DISPLAY_H
-#define INIT_DISPLAY_H
+#ifndef UNAGI_INIT_DISPLAY_H
+#define UNAGI_INIT_DISPLAY_H
 
 #include <stdbool.h>
 
@@ -30,25 +30,25 @@
 #include <xcb/xfixes.h>
 #include <xcb/randr.h>
 
-void display_init_event_handlers(void);
+void unagi_display_init_event_handlers(void);
 
-void display_init_extensions(void);
-void display_init_extensions_finalise(void);
+void unagi_display_init_extensions(void);
+void unagi_display_init_extensions_finalise(void);
 
-void display_event_set_owner_property(xcb_property_notify_event_t *);
-void display_register_cm(void);
-bool display_register_cm_finalise(void);
+void unagi_display_event_set_owner_property(xcb_property_notify_event_t *);
+void unagi_display_register_cm(void);
+bool unagi_display_register_cm_finalise(void);
 
-void display_init_atoms(void);
-bool display_init_atoms_finalise(void);
+void unagi_display_init_atoms(void);
+bool unagi_display_init_atoms_finalise(void);
 
-void display_init_redirect(void);
-void display_init_redirect_finalise(void);
+void unagi_display_init_redirect(void);
+void unagi_display_init_redirect_finalise(void);
 
-void display_add_damaged_region(xcb_xfixes_region_t *, bool);
-void display_reset_damaged(void);
+void unagi_display_add_damaged_region(xcb_xfixes_region_t *, bool);
+void unagi_display_reset_damaged(void);
 
-void display_update_screen_information(xcb_randr_get_screen_info_cookie_t,
+void unagi_display_update_screen_information(xcb_randr_get_screen_info_cookie_t,
                                        xcb_randr_get_screen_resources_cookie_t);
 
 #endif

@@ -35,10 +35,10 @@
  * \param name The plugin name
  * \return The plugin loaded or NULL if any error
  */
-plugin_t *
-plugin_load(const char *name)
+unagi_plugin_t *
+unagi_plugin_load(const char *name)
 {
-  plugin_t *new_plugin = calloc(1, sizeof(plugin_t));
+  unagi_plugin_t *new_plugin = calloc(1, sizeof(unagi_plugin_t));
   char *error;
 
   /* Clear any existing error */
@@ -46,7 +46,7 @@ plugin_load(const char *name)
 
   /* Open the plugin in the  plugins directory given as a command line
      parameter or the default path set during compilation */
-  new_plugin->dlhandle = plugin_common_dlopen(globalconf.plugins_dir, name);
+  new_plugin->dlhandle = unagi_plugin_common_dlopen(globalconf.plugins_dir, name);
   if((error = dlerror()))
     goto plugin_load_error;
 
@@ -56,28 +56,28 @@ plugin_load(const char *name)
   if((error = dlerror()))
     goto plugin_load_error;
 
-  debug("Plugin %s loaded", name);
+  unagi_debug("Plugin %s loaded", name);
   return new_plugin;	  
 
  plugin_load_error:
-  debug("Can't load plugin %s", name);
-  fatal_no_exit("%s", error);
+  unagi_debug("Can't load plugin %s", name);
+  unagi_fatal_no_exit("%s", error);
   free(new_plugin);
   return NULL;
 }
 
 /** Load all the plugins given in the configuration file */
 void
-plugin_load_all(void)
+unagi_plugin_load_all(void)
 {
   const unsigned int plugins_nb = cfg_size(globalconf.cfg, "plugins");
   if(!plugins_nb)
     return;
 
-  plugin_t *plugin = globalconf.plugins;
+  unagi_plugin_t *plugin = globalconf.plugins;
   for(unsigned int plugin_n = 0; plugin_n < plugins_nb; plugin_n++)
     {
-      plugin_t *new_plugin = plugin_load(cfg_getnstr(globalconf.cfg, "plugins", plugin_n));
+      unagi_plugin_t *new_plugin = unagi_plugin_load(cfg_getnstr(globalconf.cfg, "plugins", plugin_n));
       if(!new_plugin)
 	continue;
 
@@ -94,9 +94,9 @@ plugin_load_all(void)
 
 /** Enable the plugin if it meets the requirements */
 void
-plugin_check_requirements(void)
+unagi_plugin_check_requirements(void)
 {
-  for(plugin_t *plugin = globalconf.plugins; plugin; plugin = plugin->next)
+  for(unagi_plugin_t *plugin = globalconf.plugins; plugin; plugin = plugin->next)
     plugin->enable = (!plugin->vtable->check_requirements ? true :
 		     (*plugin->vtable->check_requirements)());
 }
@@ -106,10 +106,10 @@ plugin_check_requirements(void)
  * \param name The plugin name
  * \return Return the plugin or NULL
  */
-plugin_t *
-plugin_search_by_name(const char *name)
+unagi_plugin_t *
+unagi_plugin_search_by_name(const char *name)
 {
-  for(plugin_t *plugin = globalconf.plugins; plugin; plugin = plugin->next)
+  for(unagi_plugin_t *plugin = globalconf.plugins; plugin; plugin = plugin->next)
     if(strcmp(plugin->vtable->name, name) == 0)
       return plugin;
 
@@ -123,7 +123,7 @@ plugin_search_by_name(const char *name)
  * \param do_update_list Should the general plugins list be updated
  */
 void
-plugin_unload(plugin_t **plugin, const bool do_update_list)
+unagi_plugin_unload(unagi_plugin_t **plugin, const bool do_update_list)
 {
   if(do_update_list)
     {
@@ -139,15 +139,15 @@ plugin_unload(plugin_t **plugin, const bool do_update_list)
 
 /** Unload all the plugins and their allocated memory */
 void
-plugin_unload_all(void)
+unagi_plugin_unload_all(void)
 {
-  plugin_t *plugin = globalconf.plugins;
-  plugin_t *plugin_next;
+  unagi_plugin_t *plugin = globalconf.plugins;
+  unagi_plugin_t *plugin_next;
 
   while(plugin != NULL)
     {
       plugin_next = plugin->next;
-      plugin_unload(&plugin, false);
+      unagi_plugin_unload(&plugin, false);
       plugin = plugin_next;
     }
 }

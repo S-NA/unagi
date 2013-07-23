@@ -21,15 +21,15 @@
  *  \brief X events management
  */
 
-#ifndef EVENTS_H
-#define EVENTS_H
+#ifndef UNAGI_EVENTS_H
+#define UNAGI_EVENTS_H
 
 #include <xcb/xcb.h>
 
 #include "display.h"
 
-void event_handle_startup(xcb_generic_event_t *);
-void event_handle(xcb_generic_event_t *);
-void event_handle_poll_loop(void (*handler)(xcb_generic_event_t *));
+void unagi_event_handle_startup(xcb_generic_event_t *);
+void unagi_event_handle(xcb_generic_event_t *);
+void unagi_event_handle_poll_loop(void (*handler)(xcb_generic_event_t *));
 
 #endif
