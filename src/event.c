@@ -615,8 +615,6 @@ event_handle_reparent_notify(xcb_reparent_notify_event_t *event)
     unagi_window_list_remove_window(window);
 
   UNAGI_PLUGINS_EVENT_HANDLE(event, reparent, window);
-
-  return;
 }
 
 /** Handler for UnmapNotify event  reported when a UnmapWindow request
@@ -688,8 +686,6 @@ event_handle_property_notify(xcb_property_notify_event_t *event)
 	if(!plugin->enable && plugin->vtable->check_requirements)
 	  plugin->enable = (*plugin->vtable->check_requirements)();
       }
-
-  return;
 }
 
 /** Handler for  Mapping event reported  when the keyboard  mapping is
