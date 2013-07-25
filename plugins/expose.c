@@ -39,7 +39,7 @@
  *  getting the reply as late as needed).
  *
  *  The rendering is performed in  the following steps when the plugin
- *  is enabled ('_expose_plugin_enable'):
+ *  is enabled ('_expose_enter'):
  *
  *   1/  Create the  slots where  each window  will be  put  by simply
  *      dividing the screen in  strips according the current number of
@@ -54,9 +54,9 @@
  *      also set OverrideRedirect attribute  to ensure that the window
  *      manager will not care about them anymore.
  *
- *   4/ For each window, create a  new 'unagi_window_t' object which will be
- *      then given  to 'unagi_window_paint_all'  function of  the core
- *      code.  If the  window needs  to  be rescaled  (e.g.  when  the
+ *   4/ For  each window, create  a new 'unagi_window_t'  object which
+ *      will be then given to 'unagi_window_paint_all' function of the
+ *      core code.  If the window needs to be rescaled (e.g.  when the
  *      window does not fit the slot),  create a new Image, Pixmap and
  *      GC ('_expose_prepare_windows'). Then (and each time the window
  *      is repainted),  get the Image  of the original window  and get
@@ -153,8 +153,8 @@ typedef struct
 /** Global variables of this plugin */
 static struct
 {
-  /** Is the plugin enabled */
-  bool enabled;
+  /** Entered Expose? */
+  bool entered;
   /** Atoms structure */
   _expose_atoms_t atoms;
   /** Slots for thumbnails per CRTC */
@@ -636,59 +636,119 @@ _expose_prepare_windows(_expose_crtc_window_slots_t *crtc_slots,
 #endif
 }
 
+static void
+_expose_free_memory(void)
+{
+  _expose_window_slot_t *slot;
+  for(unsigned int crtc_n = 0; crtc_n < globalconf.crtc_len; crtc_n++)
+    {
+      for(unsigned int window_n = 0;
+          window_n < _expose_global.crtc_slots[crtc_n].nwindows;
+          window_n++)
+        {
+          slot = _expose_global.crtc_slots[crtc_n].slots + window_n;
+
+          /* Unmap the window which were previously mapped and also
+             restore override redirect */
+          if(slot->scale_window.was_unmapped)
+            unagi_window_get_invisible_window_pixmap_finalise(slot->window);
+
+          /* Free memory allocated only for Windows *actually* scaled */
+          if(slot->scale_window.window->transform_status !=
+             UNAGI_WINDOW_TRANSFORM_STATUS_NONE)
+            {
+              (*globalconf.rendering->free_window)(slot->window);
+              unagi_util_free(&(slot->scale_window.window->geometry));
+            }
+
+          unagi_util_free(&(slot->scale_window.window));
+        }
+
+      unagi_util_free(&_expose_global.crtc_slots[crtc_n].slots);
+    }
+
+  unagi_util_free(&_expose_global.crtc_slots);
+}
+
 /** Disable the  plugin by unmapping  the windows which  were unmapped
  *  before enabling the plugin and then repaint the screen again
  *
  * \param slots The windows slots
  */
 static void
-_expose_plugin_disable(void)
+_expose_quit(void)
 {
-  /* Now ungrab both the keyboard and the pointer */
-  xcb_ungrab_keyboard(globalconf.connection, XCB_CURRENT_TIME);
+  /* Now ungrab both the keyboard, the pointer and the keys */
   xcb_ungrab_pointer(globalconf.connection, XCB_CURRENT_TIME);
+  xcb_ungrab_keyboard(globalconf.connection, XCB_CURRENT_TIME);
+  xcb_ungrab_key(globalconf.connection,
+                 _expose_get_keycode(&_expose_global.key_quit),
+                 globalconf.screen->root,
+                 XCB_NONE);
 
-  if(_expose_global.enabled)
+  _expose_free_memory();
+  _expose_global.entered = false;
+
+  /* Force repaint of the screen as the plugin is now disabled */
+  globalconf.force_repaint = true;
+}
+
+static bool
+_expose_grab_finalize(const xcb_grab_pointer_cookie_t *grab_pointer_cookie,
+                      const xcb_grab_keyboard_cookie_t *grab_keyboard_cookie,
+                      const xcb_void_cookie_t *grab_key_cookie)
+{
+  xcb_grab_pointer_reply_t *grab_pointer_reply =
+    xcb_grab_pointer_reply(globalconf.connection, *grab_pointer_cookie, NULL);
+
+  bool grab_pointer_success = true;
+  if(!grab_pointer_reply || grab_pointer_reply->status != XCB_GRAB_STATUS_SUCCESS)
     {
-      xcb_ungrab_key(globalconf.connection,
-                     _expose_get_keycode(&_expose_global.key_quit),
-                     globalconf.screen->root,
-                     XCB_NONE);
-
-      _expose_window_slot_t *slot;
-      for(unsigned int crtc_n = 0; crtc_n < globalconf.crtc_len; crtc_n++)
-        {
-          for(unsigned int window_n = 0;
-              window_n < _expose_global.crtc_slots[crtc_n].nwindows;
-              window_n++)
-            {
-              slot = _expose_global.crtc_slots[crtc_n].slots + window_n;
-
-              /* Unmap the window which were previously mapped and also
-                 restore override redirect */
-              if(slot->scale_window.was_unmapped)
-                unagi_window_get_invisible_window_pixmap_finalise(slot->window);
-
-              /* Free memory allocated only for Windows *actually* scaled */
-              if(slot->scale_window.window->transform_status !=
-                 UNAGI_WINDOW_TRANSFORM_STATUS_NONE)
-                {
-                  (*globalconf.rendering->free_window)(slot->window);
-                  unagi_util_free(&(slot->scale_window.window->geometry));
-                }
-
-              unagi_util_free(&(slot->scale_window.window));
-            }
-
-          unagi_util_free(&_expose_global.crtc_slots[crtc_n].slots);
-        }
-
-      unagi_util_free(&_expose_global.crtc_slots);
-      _expose_global.enabled = false;
-
-      /* Force repaint of the screen as the plugin is now disabled */
-      globalconf.force_repaint = true;
+      unagi_warn("Cannot grab pointer");
+      grab_pointer_success = false;
     }
+
+  free(grab_pointer_reply);
+
+  xcb_grab_keyboard_reply_t *grab_keyboard_reply =
+    xcb_grab_keyboard_reply(globalconf.connection, *grab_keyboard_cookie, NULL);
+
+  bool grab_keyboard_success = true;
+  if(!grab_keyboard_reply || grab_keyboard_reply->status != XCB_GRAB_STATUS_SUCCESS)
+    {
+      unagi_warn("Cannot grab keyboard");
+      grab_keyboard_success = false;
+    }
+
+  free(grab_keyboard_reply);
+
+  xcb_generic_error_t *error;
+  bool grab_key_success = true;
+  if((error = xcb_request_check(globalconf.connection, *grab_key_cookie)))
+    {
+      unagi_warn("Cannot grab 'EXPOSE_KEY_QUIT' key");
+      free(error);
+      grab_key_success = false;
+    }
+  
+  if(!grab_pointer_success || !grab_keyboard_success || !grab_key_success)
+    {
+      if(grab_pointer_success)
+        xcb_ungrab_pointer(globalconf.connection, XCB_CURRENT_TIME);
+
+      if(grab_keyboard_success)
+        xcb_ungrab_keyboard(globalconf.connection, XCB_CURRENT_TIME);
+
+      if(grab_key_success)
+        xcb_ungrab_key(globalconf.connection,
+                       _expose_get_keycode(&_expose_global.key_quit),
+                       globalconf.screen->root,
+                       XCB_NONE);
+
+      return false;
+    }
+
+  return true;
 }
 
 /** Enable  the plugin  by  creating  the windows  slots  and map  the
@@ -699,9 +759,9 @@ _expose_plugin_disable(void)
  * \return The newly allocated slots
  */
 static bool
-_expose_plugin_enable(void)
+_expose_enter(void)
 {
-  if(_expose_global.enabled)
+  if(_expose_global.entered)
     return true;
 
   if(!unagi_atoms_is_supported(globalconf.ewmh._NET_CLIENT_LIST) ||
@@ -784,7 +844,7 @@ _expose_plugin_enable(void)
    *
    *  \todo improve focus handling
    */
-  xcb_grab_pointer_cookie_t grab_pointer_cookie =
+  const xcb_grab_pointer_cookie_t grab_pointer_cookie =
     xcb_grab_pointer_unchecked(globalconf.connection, true, globalconf.screen->root,
 			       XCB_EVENT_MASK_BUTTON_RELEASE, XCB_GRAB_MODE_ASYNC,
 			       XCB_GRAB_MODE_ASYNC, XCB_NONE, XCB_NONE,
@@ -794,7 +854,7 @@ _expose_plugin_enable(void)
      (e.g. being  able to type in  a window which may  be not selected
      due  to  rescaling)  due   to  the  hack  consisting  in  mapping
      previously unmapped windows to get their Pixmap */
-  xcb_grab_keyboard_cookie_t grab_keyboard_cookie =
+  const xcb_grab_keyboard_cookie_t grab_keyboard_cookie =
     xcb_grab_keyboard_unchecked(globalconf.connection, true, globalconf.screen->root,
 				XCB_CURRENT_TIME, XCB_GRAB_MODE_ASYNC,
 				XCB_GRAB_MODE_ASYNC);
@@ -816,40 +876,17 @@ _expose_plugin_enable(void)
       prev_window = crtc_slots->slots[crtc_slots->nwindows - 1].scale_window.window;
     }
 
-  xcb_grab_pointer_reply_t *grab_pointer_reply =
-    xcb_grab_pointer_reply(globalconf.connection, grab_pointer_cookie, NULL);
-
-  xcb_grab_keyboard_reply_t *grab_keyboard_reply =
-    xcb_grab_keyboard_reply(globalconf.connection, grab_keyboard_cookie, NULL);
-
-  xcb_generic_error_t *error;
-  if(!grab_pointer_reply || grab_pointer_reply->status != XCB_GRAB_STATUS_SUCCESS ||
-     !grab_keyboard_reply || grab_keyboard_reply->status != XCB_GRAB_STATUS_SUCCESS)
+  if(!_expose_grab_finalize(&grab_pointer_cookie, &grab_keyboard_cookie,
+                            &grab_key_cookie))
     {
-      unagi_warn("Can't grab the pointer and/or the keyboard");
-      _expose_plugin_disable();
+      _expose_free_memory();
       return false;
     }
-  else if((error = xcb_request_check(globalconf.connection,
-                                     grab_key_cookie)))
-    {
-      unagi_warn("Can't grab 'EXPOSE_KEY_QUIT' key");
-      free(error);
-      _expose_plugin_disable();
-      return false;
-    }
-  else
-    _expose_global.enabled = true;
-
-  if(grab_pointer_reply)
-    free(grab_pointer_reply);
-
-  if(grab_keyboard_reply)
-    free(grab_keyboard_reply);
 
   /* TODO: Really bad from a performance point of view */
   globalconf.force_repaint = true;
 
+  _expose_global.entered = true;
   return true;
 }
 
@@ -857,9 +894,9 @@ static void
 expose_event_handle_key_release(xcb_key_release_event_t *event,
                                 unagi_window_t *window __attribute__((unused)))
 {
-  if(_expose_global.enabled &&
+  if(_expose_global.entered &&
      unagi_key_getkeysym(event->detail, event->state) == EXPOSE_KEY_QUIT)
-    _expose_plugin_disable();
+    _expose_quit();
 }
 
 static void
@@ -934,7 +971,7 @@ static void
 expose_event_handle_button_release(xcb_button_release_event_t *event,
 				   unagi_window_t *unused __attribute__ ((unused)))
 {
-  if(!_expose_global.enabled)
+  if(!_expose_global.entered)
     return;
 
   for(unsigned int crtc_n = 0; crtc_n < globalconf.crtc_len; crtc_n++)
@@ -949,7 +986,7 @@ expose_event_handle_button_release(xcb_button_release_event_t *event,
                                slot->scale_window.window))
             {
               unagi_window_t *window = slot->window;
-              _expose_plugin_disable();
+              _expose_quit();
               _expose_show_selected_window(window);
               return;
             }
@@ -1009,7 +1046,7 @@ expose_event_handle_property_notify(xcb_property_notify_event_t *event,
 static unagi_window_t *
 expose_render_windows(void)
 {
-  if(!_expose_global.enabled)
+  if(!_expose_global.entered)
     return NULL;
 
   xcb_query_pointer_reply_t *query_pointer_reply =
@@ -1055,7 +1092,7 @@ expose_dbus_process_message(DBusMessage *msg)
   else if(strcmp(member, "enter") != 0)
     return DBUS_ERROR_UNKNOWN_METHOD;
 
-  return _expose_plugin_enable() ? NULL : DBUS_ERROR_FAILED;
+  return _expose_enter() ? NULL : DBUS_ERROR_FAILED;
 }
 
 /** Called on dlclose() and fee the memory allocated by this plugin */
@@ -1077,7 +1114,8 @@ expose_destructor(void)
   if(_expose_global.atoms.current_desktop)
     free(_expose_global.atoms.current_desktop);
 
-  _expose_plugin_disable();
+  if(_expose_global.entered)
+    _expose_quit();
 }
 
 /** Structure holding all the functions addresses */
