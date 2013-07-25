@@ -32,6 +32,7 @@
 
 #include <confuse.h>
 #include <ev.h>
+#include <dbus/dbus.h>
 
 #include "window.h"
 #include "rendering.h"
@@ -141,6 +142,8 @@ typedef struct _unagi_conf_t
     uint16_t modeswitch;
   } key_masks;
 
+  DBusConnection *dbus_connection;
+  ev_io dbus_event_io;
 } unagi_conf_t;
 
 extern unagi_conf_t globalconf;

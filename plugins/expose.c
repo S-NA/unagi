@@ -84,12 +84,16 @@
 #include "util.h"
 #include "key.h"
 #include "event.h"
+#include "dbus.h"
+
+#define _PLUGIN_NAME "expose"
+#define _DBUS_NAME UNAGI_DBUS_NAME_PLUGIN_PREFIX _PLUGIN_NAME
 
 /** Activation Keysym
  * \todo Should be in configuration file
  */
-#define PLUGIN_KEY XK_F12
 #define PLUGIN_NON_FOCUSED_WINDOW_OPACITY ((double) 0.95)
+#define EXPOSE_KEY_QUIT XK_Escape
 
 /** Spacing between thumbnails
  * \todo Remove
@@ -140,6 +144,12 @@ typedef struct
   _expose_window_slot_t *slots;
 } _expose_crtc_window_slots_t;
 
+typedef struct
+{
+  xcb_keycode_t keycode;
+  xcb_keysym_t keysym;
+} _expose_key_t;
+
 /** Global variables of this plugin */
 static struct
 {
@@ -149,7 +159,25 @@ static struct
   _expose_atoms_t atoms;
   /** Slots for thumbnails per CRTC */
   _expose_crtc_window_slots_t *crtc_slots;
+  _expose_key_t key_quit;
 } _expose_global;
+
+extern unagi_plugin_vtable_t plugin_vtable;
+
+static inline xcb_keycode_t
+_expose_get_keycode(_expose_key_t *key)
+{
+  if(!key->keycode)
+    {
+      xcb_keycode_t *keycode = xcb_key_symbols_get_keycode(globalconf.keysyms,
+                                                           key->keysym);
+
+      key->keycode = *keycode;
+      free(keycode);
+    }
+
+  return key->keycode;
+}
 
 /** Called  on  dlopen() to  initialise  memory  areas and  also  send
  *  GetProperty  requests on  the  root  window for  _NET_CLIENT_LIST,
@@ -179,6 +207,9 @@ expose_constructor(void)
   _expose_global.atoms.current_desktop_cookie =
     xcb_ewmh_get_current_desktop_unchecked(&globalconf.ewmh,
                                            globalconf.screen_nbr);
+
+  _expose_global.key_quit.keycode = 0;
+  _expose_global.key_quit.keysym = EXPOSE_KEY_QUIT;
 }
 
 /** Update    the     values    of     _NET_CLIENT_LIST    (required),
@@ -216,10 +247,15 @@ _expose_update_atoms_values(_expose_atoms_t *atoms)
   CHECK_REQUIRED_ATOM(current_desktop, uint32_t, _NET_CURRENT_DESKTOP)
 }
 
-/** Check whether the plugin can actually be enabled. Only GrabKey is
- *  required as required Atoms are checked when actually enabling the
- *  plugin as their values may change anytime or Unagi could even be
- *  ran before the WM itself.
+/** Check whether the plugin can actually be enabled. It only requires
+ *  D-Bus to enter Expose. After that, this is done through keyboard
+ *  shortcuts (added after entering) or mouse.
+ *
+ *  D-Bus could have be used for keys after entering Expose, but it
+ *  means that these specific keys would have to be defined in WM
+ *  configuration, would trigger unnecessary calls and especially this
+ *  allows to define much more simple keys (such as binding 'Escape'
+ *  to quit and 'Left/Right' keys to go to the previous/next windows).
  *
  * \todo make the GrabKey completely asynchronous
  * \return true if the plugin can be enabled
@@ -227,27 +263,18 @@ _expose_update_atoms_values(_expose_atoms_t *atoms)
 static bool
 expose_check_requirements(void)
 {
-  /* Send the GrabKey request on the key given in the configuration */
-  xcb_keycode_t *keycode = keycode = xcb_key_symbols_get_keycode(globalconf.keysyms,
-								 PLUGIN_KEY);
+  if(globalconf.dbus_connection == NULL)
+    return false;
 
-  xcb_void_cookie_t grab_key_cookie = xcb_grab_key_checked(globalconf.connection, false,
-							   globalconf.screen->root,
-							   XCB_NONE, *keycode,
-							   XCB_GRAB_MODE_ASYNC,
-							   XCB_GRAB_MODE_ASYNC);
-
-  free(keycode);
-
-  /* Check  whether the GrabKey  request succeeded,  otherwise disable
-     the plugin */
-  xcb_generic_error_t *error = xcb_request_check(globalconf.connection,
-						 grab_key_cookie);
-
-  if(error)
+  /* Request D-Bus name org.minidweeb.unagi.plugin.expose to be able
+     to enter Expose. This should never failed, hence the dirty hack
+     to reset dbus-related exported variables */
+  if(!unagi_dbus_request_name(_DBUS_NAME))
     {
-      unagi_warn("Plugin disabled: Can't grab selected key");
-      free(error);
+      unagi_warn("D-Bus failed because of the warnings above, therefore "
+                 "this plugin will be only useable through the mouse.");
+
+      plugin_vtable.dbus_process_message = NULL;
       return false;
     }
 
@@ -623,6 +650,11 @@ _expose_plugin_disable(void)
 
   if(_expose_global.enabled)
     {
+      xcb_ungrab_key(globalconf.connection,
+                     _expose_get_keycode(&_expose_global.key_quit),
+                     globalconf.screen->root,
+                     XCB_NONE);
+
       _expose_window_slot_t *slot;
       for(unsigned int crtc_n = 0; crtc_n < globalconf.crtc_len; crtc_n++)
         {
@@ -666,9 +698,43 @@ _expose_plugin_disable(void)
  * \param nwindows The numbers of windows on the screen
  * \return The newly allocated slots
  */
-static void
-_expose_plugin_enable(const uint32_t nwindows)
+static bool
+_expose_plugin_enable(void)
 {
+  if(_expose_global.enabled)
+    return true;
+
+  if(!unagi_atoms_is_supported(globalconf.ewmh._NET_CLIENT_LIST) ||
+     !unagi_atoms_is_supported(globalconf.ewmh._NET_ACTIVE_WINDOW) ||
+     !unagi_atoms_is_supported(globalconf.ewmh._NET_CURRENT_DESKTOP) ||
+     !unagi_atoms_is_supported(globalconf.ewmh._NET_WM_DESKTOP))
+    {
+      unagi_warn("Plugin cannot be enabled: Required atoms _NET_CLIENT_LIST, "
+                 "_NET_ACTIVE_WINDOW, _NET_CURRENT_DESKTOP and/or _NET_WM_DESKTOP "
+                 "are not in _NET_SUPPORTED (check with 'xprop -root')");
+
+      return false;
+    }
+
+  /* Update the  atoms values  now if it  has been changed  in the
+     meantime */
+  _expose_update_atoms_values(&_expose_global.atoms);
+  if(!_expose_global.atoms.client_list ||
+     !_expose_global.atoms.active_window ||
+     !_expose_global.atoms.current_desktop)
+    return false;
+
+  /* Get  the number  of windows  actually managed  by  the window
+     manager (as given by _NET_CLIENT_LIST) */
+  const uint32_t nwindows = _expose_global.atoms.client_list->windows_len;
+  if(!nwindows)
+    {
+      unagi_warn("Plugin cannot be enabled: No Windows listed in _NET_CLIENT_LIST "
+                 "(check with 'xprop -root')");
+
+      return false;
+    }
+
   _expose_global.crtc_slots = calloc(globalconf.crtc_len,
                                      sizeof(_expose_crtc_window_slots_t));
 
@@ -733,6 +799,15 @@ _expose_plugin_enable(const uint32_t nwindows)
 				XCB_CURRENT_TIME, XCB_GRAB_MODE_ASYNC,
 				XCB_GRAB_MODE_ASYNC);
 
+  xcb_void_cookie_t grab_key_cookie =
+    xcb_grab_key_checked(globalconf.connection,
+                         false,
+                         globalconf.screen->root,
+                         XCB_NONE,
+                         _expose_get_keycode(&_expose_global.key_quit),
+                         XCB_GRAB_MODE_ASYNC,
+                         XCB_GRAB_MODE_ASYNC);
+
   unagi_window_t *prev_window = NULL;
   for(unsigned int i = 0; i < globalconf.crtc_len; i++)
     {
@@ -747,11 +822,21 @@ _expose_plugin_enable(const uint32_t nwindows)
   xcb_grab_keyboard_reply_t *grab_keyboard_reply =
     xcb_grab_keyboard_reply(globalconf.connection, grab_keyboard_cookie, NULL);
 
+  xcb_generic_error_t *error;
   if(!grab_pointer_reply || grab_pointer_reply->status != XCB_GRAB_STATUS_SUCCESS ||
      !grab_keyboard_reply || grab_keyboard_reply->status != XCB_GRAB_STATUS_SUCCESS)
     {
       unagi_warn("Can't grab the pointer and/or the keyboard");
       _expose_plugin_disable();
+      return false;
+    }
+  else if((error = xcb_request_check(globalconf.connection,
+                                     grab_key_cookie)))
+    {
+      unagi_warn("Can't grab 'EXPOSE_KEY_QUIT' key");
+      free(error);
+      _expose_plugin_disable();
+      return false;
     }
   else
     _expose_global.enabled = true;
@@ -764,50 +849,24 @@ _expose_plugin_enable(const uint32_t nwindows)
 
   /* TODO: Really bad from a performance point of view */
   globalconf.force_repaint = true;
+
+  return true;
 }
 
-/** When receiving a KeyRelease  event, just enable/disable the plugin
- *  if the plugin shortcuts key has been pressed and released
- *
- * \param event The X KeyPress event
- */
 static void
 expose_event_handle_key_release(xcb_key_release_event_t *event,
-				unagi_window_t *window __attribute__((unused)))
+                                unagi_window_t *window __attribute__((unused)))
 {
-  if(unagi_key_getkeysym(event->detail, event->state) != PLUGIN_KEY)
-    return;
-
-  if(_expose_global.enabled)
+  if(_expose_global.enabled &&
+     unagi_key_getkeysym(event->detail, event->state) == EXPOSE_KEY_QUIT)
     _expose_plugin_disable();
-  else
-    {
-      if(!unagi_atoms_is_supported(globalconf.ewmh._NET_CLIENT_LIST) ||
-         !unagi_atoms_is_supported(globalconf.ewmh._NET_ACTIVE_WINDOW) ||
-         !unagi_atoms_is_supported(globalconf.ewmh._NET_CURRENT_DESKTOP) ||
-         !unagi_atoms_is_supported(globalconf.ewmh._NET_WM_DESKTOP))
-        {
-          unagi_warn("Plugin cannot be enabled: Required atoms _NET_CLIENT_LIST, "
-               "_NET_ACTIVE_WINDOW, _NET_CURRENT_DESKTOP and/or _NET_WM_DESKTOP "
-               "are not in _NET_SUPPORTED (check with 'xprop -root')");
+}
 
-          return;
-        }
-
-      /* Update the  atoms values  now if it  has been changed  in the
-	 meantime */
-      _expose_update_atoms_values(&_expose_global.atoms);
-      if(!_expose_global.atoms.client_list ||
-         !_expose_global.atoms.active_window ||
-         !_expose_global.atoms.current_desktop)
-        return;
-
-      /* Get  the number  of windows  actually managed  by  the window
-	 manager (as given by _NET_CLIENT_LIST) */
-      const uint32_t nwindows = _expose_global.atoms.client_list->windows_len;
-      if(nwindows)
-        _expose_plugin_enable(nwindows);
-    }
+static void
+expose_event_handle_mapping_notify(xcb_mapping_notify_event_t *e __attribute__((unused)),
+                                   unagi_window_t *w __attribute__((unused)))
+{
+  _expose_global.key_quit.keycode = 0;
 }
 
 /** Check whether the given window is within the given coordinates
@@ -981,10 +1040,31 @@ expose_render_windows(void)
   return _expose_global.crtc_slots[0].slots->scale_window.window;
 }
 
+/** Process D-Bus message for org.minidweeb.unagi.plugin.expose D-Bus
+ *  Interface, currently only to enter Expose.
+ *
+ * \see expose_check_requirements
+ */
+static const char *
+expose_dbus_process_message(DBusMessage *msg)
+{
+  const char *member = dbus_message_get_member(msg);
+  if(member == NULL ||
+     dbus_message_get_type(msg) != DBUS_MESSAGE_TYPE_METHOD_CALL)
+    return DBUS_ERROR_NOT_SUPPORTED;
+  else if(strcmp(member, "enter") != 0)
+    return DBUS_ERROR_UNKNOWN_METHOD;
+
+  return _expose_plugin_enable() ? NULL : DBUS_ERROR_FAILED;
+}
+
 /** Called on dlclose() and fee the memory allocated by this plugin */
 static void __attribute__((destructor))
 expose_destructor(void)
 {
+  if(plugin_vtable.dbus_process_message)
+    unagi_dbus_release_name(_DBUS_NAME);
+
   if(_expose_global.atoms.client_list)
     {
       xcb_ewmh_get_windows_reply_wipe(_expose_global.atoms.client_list);
@@ -1002,12 +1082,14 @@ expose_destructor(void)
 
 /** Structure holding all the functions addresses */
 unagi_plugin_vtable_t plugin_vtable = {
-  .name = "expose",
+  .name = _PLUGIN_NAME,
+  .dbus_process_message = expose_dbus_process_message,
   .events = {
     NULL,
     NULL,
     NULL,
     expose_event_handle_key_release,
+    expose_event_handle_mapping_notify,
     expose_event_handle_button_release,
     NULL,
     NULL,

@@ -48,6 +48,7 @@
 #include "util.h"
 #include "plugin.h"
 #include "key.h"
+#include "dbus.h"
 
 #ifdef __DEBUG__
 /*
@@ -229,6 +230,10 @@ _unagi_exit_cleanup(void)
 
       xcb_disconnect(globalconf.connection);
     }
+
+  /* This must be called after unloading plugins as requesting D-Bus
+     Name and Interface is done in the plugins themselves */
+  unagi_dbus_cleanup();
 
   ev_loop_destroy(globalconf.event_loop);
 }
@@ -554,7 +559,11 @@ main(int argc, char **argv)
   xcb_ungrab_server(globalconf.connection);
 
   /* Check the  plugin requirements  which will disable  plugins which
-     don't meet the requirements */
+     don't meet the requirements, but  before initialize D-Bus so that
+     plugins can required or not D-Bus support */
+  if(!unagi_dbus_init())
+    unagi_warn("D-Bus disabled, see warnings above");
+
   unagi_plugin_check_requirements();
 
   globalconf.repaint_interval = globalconf.refresh_rate_interval;
@@ -580,6 +589,9 @@ main(int argc, char **argv)
 
   unagi_window_paint_all(globalconf.windows);
   ev_invoke(globalconf.event_loop, &globalconf.event_io_watcher, -1);
+
+  if(globalconf.dbus_connection && !unagi_dbus_ev_init())
+    unagi_warn("D-Bus disabled, see warnings above");
 
   /* Main event and error loop */
   ev_run(globalconf.event_loop, 0);

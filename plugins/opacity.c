@@ -344,7 +344,9 @@ opacity_destructor(void)
 /** Structure holding all the functions addresses */
 unagi_plugin_vtable_t plugin_vtable = {
   .name = "opacity",
+  .dbus_process_message = NULL,
   .events = {
+    NULL,
     NULL,
     NULL,
     NULL,

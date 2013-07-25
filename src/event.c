@@ -715,6 +715,8 @@ event_handle_mapping_notify(xcb_mapping_notify_event_t *event)
   globalconf.keysyms = xcb_key_symbols_alloc(globalconf.connection);
 
   unagi_key_lock_mask_get_reply(key_mapping_cookie);
+
+  UNAGI_PLUGINS_EVENT_HANDLE(event, mapping, NULL);
 }
 
 /** Initialise errors and events handlers

@@ -48,6 +48,8 @@
 #include <xcb/damage.h>
 #include <xcb/randr.h>
 
+#include <dbus/dbus.h>
+
 #include "window.h"
 
 /** Plugin structure holding all the supported event handlers */
@@ -61,6 +63,8 @@ typedef struct
   void (*key_press) (xcb_key_press_event_t *, unagi_window_t *);
   /** KeyRelease event */
   void (*key_release) (xcb_key_release_event_t *, unagi_window_t *);
+  /** MappingNotify event */
+  void (*mapping) (xcb_mapping_notify_event_t *, unagi_window_t *);
   /** ButtonRelease event */
   void (*button_release) (xcb_button_release_event_t *, unagi_window_t *);
   /** CirculateNotify event */
@@ -86,6 +90,8 @@ typedef struct
 {
   /** Plugin name */
   const char *name;
+  /** Hook to process D-Bus messages */
+  const char *(*dbus_process_message) (DBusMessage *);
   /** Plugin events hooks */
   unagi_plugin_events_notify_t events;
   /** Called before the main loop to check the plugin requirements */
