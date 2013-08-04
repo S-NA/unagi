@@ -93,12 +93,18 @@
  * \todo Should be in configuration file
  */
 #define PLUGIN_NON_FOCUSED_WINDOW_OPACITY ((double) 0.95)
+#define EXPOSE_KEY_CRTC_CYCLE XK_Tab
+#define EXPOSE_KEY_WINDOW_UP XK_Up
+#define EXPOSE_KEY_WINDOW_PREV XK_Left
+#define EXPOSE_KEY_WINDOW_NEXT XK_Right
+#define EXPOSE_KEY_WINDOW_DOWN XK_Down
+#define EXPOSE_KEY_WINDOW_SELECT XK_s
 #define EXPOSE_KEY_QUIT XK_Escape
 
 /** Spacing between thumbnails
  * \todo Remove
  */
-#define STRIP_SPACING 1
+#define STRIP_SPACING 0
 
 /** Expose window */
 typedef struct
@@ -140,15 +146,31 @@ typedef struct
 typedef struct
 {
   uint32_t nwindows;
+  uint8_t nstrips;
+  unsigned int nwindows_per_strip;
   xcb_randr_get_crtc_info_reply_t *crtc;
   _expose_window_slot_t *slots;
 } _expose_crtc_window_slots_t;
 
 typedef struct
 {
+  const char *name;
   xcb_keycode_t keycode;
   xcb_keysym_t keysym;
+  xcb_void_cookie_t grab_cookie;
+  bool grab_success;
 } _expose_key_t;
+
+typedef struct
+{
+  _expose_key_t crtc_cycle;
+  _expose_key_t window_up;
+  _expose_key_t window_left;
+  _expose_key_t window_right;
+  _expose_key_t window_down;
+  _expose_key_t window_select;
+  _expose_key_t quit;
+} _expose_keys_t;
 
 /** Global variables of this plugin */
 static struct
@@ -159,8 +181,42 @@ static struct
   _expose_atoms_t atoms;
   /** Slots for thumbnails per CRTC */
   _expose_crtc_window_slots_t *crtc_slots;
-  _expose_key_t key_quit;
+  /** Current CRTC and Slot (Window) */
+  _expose_crtc_window_slots_t *current_crtc;
+  _expose_window_slot_t *current_slot;
+  /** Keyboards keys handled by this plugin */
+  _expose_keys_t keys;
 } _expose_global;
+
+#define GRAB_KEY(key_name)                                              \
+  _expose_global.keys.key_name.grab_cookie =                            \
+    xcb_grab_key_checked(globalconf.connection,                         \
+                         false,                                         \
+                         globalconf.screen->root,                       \
+                         XCB_NONE,                                      \
+                         _expose_get_keycode(&_expose_global.keys.key_name), \
+                         XCB_GRAB_MODE_ASYNC,                           \
+                         XCB_GRAB_MODE_ASYNC)
+
+#define GRAB_KEY_FINALIZE(key_name)                                            \
+  {                                                                            \
+    xcb_generic_error_t *error;                                                \
+    _expose_global.keys.key_name.grab_success = true;                          \
+    if((error = xcb_request_check(globalconf.connection,                       \
+                                  _expose_global.keys.key_name.grab_cookie)))  \
+      {                                                                        \
+        unagi_warn("Cannot grab '%s' key", _expose_global.keys.key_name.name); \
+        free(error);                                                           \
+        _expose_global.keys.key_name.grab_success = false;                     \
+      }                                                                        \
+    }
+
+#define UNGRAB_KEY(key_name)                                            \
+  if(_expose_global.keys.key_name.grab_success)                         \
+    xcb_ungrab_key(globalconf.connection,                               \
+                   _expose_get_keycode(&_expose_global.keys.key_name),  \
+                   globalconf.screen->root,                             \
+                   XCB_NONE)
 
 extern unagi_plugin_vtable_t plugin_vtable;
 
@@ -177,6 +233,53 @@ _expose_get_keycode(_expose_key_t *key)
     }
 
   return key->keycode;
+}
+
+static inline void
+_expose_pointer_move_center(const unagi_window_t *window)
+{
+  xcb_warp_pointer(globalconf.connection,
+                   XCB_NONE,
+                   globalconf.screen->root,
+                   0, 0, 0, 0,
+                   window->geometry->x + window->geometry->width / 2,
+                   window->geometry->y + window->geometry->height / 2);
+}
+
+static inline bool
+_expose_coordinates_within_slot(_expose_window_slot_t *slot,
+                                int16_t x,
+                                int16_t y)
+{
+  return (slot &&
+          x >= slot->extents.x &&
+          x <= slot->extents.x + slot->extents.width &&
+          y >= slot->extents.y &&
+          y <= slot->extents.y + slot->extents.height);
+}
+
+static bool
+_expose_update_current_crtc_and_slot(int16_t x, int16_t y)
+{
+  for(_expose_crtc_window_slots_t *crtc = _expose_global.crtc_slots;
+      crtc - _expose_global.crtc_slots < globalconf.crtc_len;
+      crtc++)
+    {
+      if(!crtc->nwindows)
+        continue;
+
+      for(_expose_window_slot_t *slot = crtc->slots;
+          slot - crtc->slots < crtc->nwindows;
+          slot++)
+        if(_expose_coordinates_within_slot(slot, x, y))
+          {
+            _expose_global.current_crtc = crtc;
+            _expose_global.current_slot = slot;
+            return true;
+          }
+    }
+
+  return false;
 }
 
 /** Called  on  dlopen() to  initialise  memory  areas and  also  send
@@ -208,8 +311,22 @@ expose_constructor(void)
     xcb_ewmh_get_current_desktop_unchecked(&globalconf.ewmh,
                                            globalconf.screen_nbr);
 
-  _expose_global.key_quit.keycode = 0;
-  _expose_global.key_quit.keysym = EXPOSE_KEY_QUIT;
+  _expose_global.keys.crtc_cycle.name = "tab";
+  _expose_global.keys.crtc_cycle.keysym = EXPOSE_KEY_CRTC_CYCLE;
+
+  _expose_global.keys.window_up.name = "up";
+  _expose_global.keys.window_up.keysym = EXPOSE_KEY_WINDOW_UP;
+  _expose_global.keys.window_left.name = "left";
+  _expose_global.keys.window_left.keysym = EXPOSE_KEY_WINDOW_PREV;
+  _expose_global.keys.window_right.name = "right";
+  _expose_global.keys.window_right.keysym = EXPOSE_KEY_WINDOW_NEXT;
+  _expose_global.keys.window_down.name = "down";
+  _expose_global.keys.window_down.keysym = EXPOSE_KEY_WINDOW_DOWN;
+  _expose_global.keys.window_select.name = "return";
+  _expose_global.keys.window_select.keysym = EXPOSE_KEY_WINDOW_SELECT;
+
+  _expose_global.keys.quit.name = "escape";
+  _expose_global.keys.quit.keysym = EXPOSE_KEY_QUIT;
 }
 
 /** Update    the     values    of     _NET_CLIENT_LIST    (required),
@@ -375,20 +492,21 @@ _expose_crtc_assign_window(unagi_window_t *window)
  * \param nwindows_per_strip The number of windows per strip
  * \return The newly allocated slots
  */
-static unsigned int
+static void
 _expose_create_slots(_expose_crtc_window_slots_t *crtc_slots)
 {
   /* The  screen is  divided  in  strips depending  on  the number  of
      windows */
-  const uint8_t strips_nb = (uint8_t) sqrt(crtc_slots->nwindows + 1);
+  crtc_slots->nstrips = (uint8_t) sqrt(crtc_slots->nwindows + 1);
 
   /* Each strip height excludes spacing */
   const uint16_t strip_height = (uint16_t) 
-    ((crtc_slots->crtc->height - STRIP_SPACING * (strips_nb + 1)) / strips_nb);
+    ((crtc_slots->crtc->height - STRIP_SPACING *
+      (crtc_slots->nstrips + 1)) / crtc_slots->nstrips);
 
   /* The number of windows per strip depends */
-  unsigned int nwindows_per_strip = (unsigned int)
-    ceilf((float) crtc_slots->nwindows / (float) strips_nb);
+  crtc_slots->nwindows_per_strip = (unsigned int)
+    ceilf((float) crtc_slots->nwindows / (float) crtc_slots->nstrips);
 
   int16_t current_y = crtc_slots->crtc->y + STRIP_SPACING, current_x;
 
@@ -397,15 +515,15 @@ _expose_create_slots(_expose_crtc_window_slots_t *crtc_slots)
   unsigned int slot_n = 0;
 
   /* Create the strips of windows */
-  for(uint8_t strip_n = 0; strip_n < strips_nb; strip_n++)
+  for(uint8_t strip_n = 0; strip_n < crtc_slots->nstrips; strip_n++)
     {
       current_x = crtc_slots->crtc->x + STRIP_SPACING;
 
       /* Number of slots for this strip which depends on the number of
 	 remaining slots (the last strip may contain less windows) */
       const unsigned int strip_slots_n =
-        (crtc_slots->nwindows - slot_n > nwindows_per_strip ?
-         nwindows_per_strip : crtc_slots->nwindows - slot_n);
+        (crtc_slots->nwindows - slot_n > crtc_slots->nwindows_per_strip ?
+         crtc_slots->nwindows_per_strip : crtc_slots->nwindows - slot_n);
 
       /* Slot width including spacing */
       const uint16_t slot_width = (uint16_t)
@@ -426,8 +544,6 @@ _expose_create_slots(_expose_crtc_window_slots_t *crtc_slots)
 
       current_y = (int16_t) (current_y + strip_height + STRIP_SPACING);
     }
-
-  return nwindows_per_strip;
 }
 
 /** Assign each  window into the  nearest slot based on  the Euclidian
@@ -440,7 +556,7 @@ _expose_create_slots(_expose_crtc_window_slots_t *crtc_slots)
 static void
 _expose_assign_windows_to_slots(_expose_crtc_window_slots_t *crtc_slots)
 {
-  unsigned int nwindows_per_strip = _expose_create_slots(crtc_slots);
+  _expose_create_slots(crtc_slots);
   _expose_window_slot_t *slots = crtc_slots->slots;
 
   struct
@@ -497,14 +613,17 @@ _expose_assign_windows_to_slots(_expose_crtc_window_slots_t *crtc_slots)
   /** Adjust slot width according to the window size
    * \todo Should also handle the window resize to optimize slot width
    */
-  for(uint32_t slot_n = 0; slot_n < crtc_slots->nwindows; slot_n += nwindows_per_strip)
+  for(uint32_t slot_n = 0;
+      slot_n < crtc_slots->nwindows;
+      slot_n += crtc_slots->nwindows_per_strip)
     {
       /* Number of spare pixels */
       unsigned int slot_spare_pixels = 0;
       /* Number of slots to extend */
       unsigned int slots_to_extend_n = 0;
 
-      for(uint32_t window_strip_n = 0; window_strip_n < nwindows_per_strip;
+      for(uint32_t window_strip_n = 0;
+          window_strip_n < crtc_slots->nwindows_per_strip;
 	  window_strip_n++)
 	{
 	  /* Set the slot width to the window one if the window is smaller */
@@ -533,7 +652,8 @@ _expose_assign_windows_to_slots(_expose_crtc_window_slots_t *crtc_slots)
 
       uint16_t spare_pixels_per_slot = (uint16_t) (slot_spare_pixels / slots_to_extend_n);
 
-      for(uint32_t window_strip_n = 0; window_strip_n < nwindows_per_strip;
+      for(uint32_t window_strip_n = 0;
+          window_strip_n < crtc_slots->nwindows_per_strip;
 	  window_strip_n++)
 	if(window_width_with_border(slots[window_strip_n].window->geometry) >
 	   slots[window_strip_n].extents.width)
@@ -690,10 +810,16 @@ _expose_quit(void)
   /* Now ungrab both the keyboard, the pointer and the keys */
   xcb_ungrab_pointer(globalconf.connection, XCB_CURRENT_TIME);
   xcb_ungrab_keyboard(globalconf.connection, XCB_CURRENT_TIME);
-  xcb_ungrab_key(globalconf.connection,
-                 _expose_get_keycode(&_expose_global.key_quit),
-                 globalconf.screen->root,
-                 XCB_NONE);
+
+  if(globalconf.crtc_len > 1)
+    UNGRAB_KEY(crtc_cycle);
+
+  UNGRAB_KEY(window_up);
+  UNGRAB_KEY(window_left);
+  UNGRAB_KEY(window_right);
+  UNGRAB_KEY(window_down);
+  UNGRAB_KEY(window_select);
+  UNGRAB_KEY(quit);
 
   _expose_free_memory();
   _expose_global.entered = false;
@@ -704,8 +830,7 @@ _expose_quit(void)
 
 static bool
 _expose_grab_finalize(const xcb_grab_pointer_cookie_t *grab_pointer_cookie,
-                      const xcb_grab_keyboard_cookie_t *grab_keyboard_cookie,
-                      const xcb_void_cookie_t *grab_key_cookie)
+                      const xcb_grab_keyboard_cookie_t *grab_keyboard_cookie)
 {
   xcb_grab_pointer_reply_t *grab_pointer_reply =
     xcb_grab_pointer_reply(globalconf.connection, *grab_pointer_cookie, NULL);
@@ -731,16 +856,19 @@ _expose_grab_finalize(const xcb_grab_pointer_cookie_t *grab_pointer_cookie,
 
   free(grab_keyboard_reply);
 
-  xcb_generic_error_t *error;
-  bool grab_key_success = true;
-  if((error = xcb_request_check(globalconf.connection, *grab_key_cookie)))
-    {
-      unagi_warn("Cannot grab 'EXPOSE_KEY_QUIT' key");
-      free(error);
-      grab_key_success = false;
-    }
+  if(globalconf.crtc_len > 1)
+    GRAB_KEY_FINALIZE(crtc_cycle);
+
+  GRAB_KEY_FINALIZE(window_up);
+  GRAB_KEY_FINALIZE(window_left);
+  GRAB_KEY_FINALIZE(window_right);
+  GRAB_KEY_FINALIZE(window_down);
+  GRAB_KEY_FINALIZE(window_select);
+  GRAB_KEY_FINALIZE(quit);
   
-  if(!grab_pointer_success || !grab_keyboard_success || !grab_key_success)
+  if(!grab_pointer_success ||
+     !grab_keyboard_success ||
+     !_expose_global.keys.quit.grab_success)
     {
       if(grab_pointer_success)
         xcb_ungrab_pointer(globalconf.connection, XCB_CURRENT_TIME);
@@ -748,11 +876,15 @@ _expose_grab_finalize(const xcb_grab_pointer_cookie_t *grab_pointer_cookie,
       if(grab_keyboard_success)
         xcb_ungrab_keyboard(globalconf.connection, XCB_CURRENT_TIME);
 
-      if(grab_key_success)
-        xcb_ungrab_key(globalconf.connection,
-                       _expose_get_keycode(&_expose_global.key_quit),
-                       globalconf.screen->root,
-                       XCB_NONE);
+      if(globalconf.crtc_len > 1)
+        UNGRAB_KEY(crtc_cycle);
+
+      UNGRAB_KEY(window_up);
+      UNGRAB_KEY(window_left);
+      UNGRAB_KEY(window_right);
+      UNGRAB_KEY(window_down);
+      UNGRAB_KEY(window_select);
+      UNGRAB_KEY(quit);
 
       return false;
     }
@@ -868,14 +1000,15 @@ _expose_enter(void)
 				XCB_CURRENT_TIME, XCB_GRAB_MODE_ASYNC,
 				XCB_GRAB_MODE_ASYNC);
 
-  xcb_void_cookie_t grab_key_cookie =
-    xcb_grab_key_checked(globalconf.connection,
-                         false,
-                         globalconf.screen->root,
-                         XCB_NONE,
-                         _expose_get_keycode(&_expose_global.key_quit),
-                         XCB_GRAB_MODE_ASYNC,
-                         XCB_GRAB_MODE_ASYNC);
+  if(globalconf.crtc_len > 1)
+    GRAB_KEY(crtc_cycle);
+
+  GRAB_KEY(window_up);
+  GRAB_KEY(window_left);
+  GRAB_KEY(window_right);
+  GRAB_KEY(window_down);
+  GRAB_KEY(window_select);
+  GRAB_KEY(quit);
 
   unagi_window_t *prev_window = NULL;
   for(unsigned int i = 0; i < globalconf.crtc_len; i++)
@@ -885,10 +1018,10 @@ _expose_enter(void)
       prev_window = crtc_slots->slots[crtc_slots->nwindows - 1].scale_window.window;
     }
 
-  if(!_expose_grab_finalize(&grab_pointer_cookie, &grab_keyboard_cookie,
-                            &grab_key_cookie))
+  if(!_expose_grab_finalize(&grab_pointer_cookie, &grab_keyboard_cookie))
     {
       _expose_free_memory();
+      unagi_warn("Plugin cannot be enabled: see the messages above");
       return false;
     }
 
@@ -899,20 +1032,161 @@ _expose_enter(void)
   return true;
 }
 
+/** Show the selected window (through _NET_ACTIVE_WINDOW
+ *  ClientMessage) after changing desktop (through
+ *  _NET_CURRENT_DESKTOP ClientMessage) if necessary.
+ *
+ * \param window The window object to show
+ */
+static void
+_expose_show_selected_window(void)
+{
+  unagi_window_t *window = _expose_global.current_slot->scale_window.window;
+  if(window->id != *_expose_global.atoms.active_window)
+    {
+      uint32_t window_desktop;
+      if(!xcb_ewmh_get_wm_desktop_reply(&globalconf.ewmh,
+                                        xcb_ewmh_get_wm_desktop(&globalconf.ewmh,
+                                                                window->id),
+                                        &window_desktop,
+                                        NULL))
+        unagi_warn("Could not get the current desktop of selected Window");
+      else
+        {
+          if(window_desktop != *_expose_global.atoms.current_desktop)
+            xcb_ewmh_request_change_current_desktop(&globalconf.ewmh,
+                                                    globalconf.screen_nbr,
+                                                    window_desktop,
+                                                    XCB_CURRENT_TIME);
+
+          xcb_ewmh_request_change_active_window(&globalconf.ewmh,
+                                                globalconf.screen_nbr,
+                                                window->id,
+                                                XCB_EWMH_CLIENT_SOURCE_TYPE_OTHER,
+                                                XCB_CURRENT_TIME,
+                                                XCB_NONE);
+
+          unagi_window_map_raised(window);
+        }
+    }
+
+  _expose_quit();
+}
+
+static void
+_expose_up_down_update_current_slot(int16_t x, int16_t y, int index)
+{
+  if(!_expose_update_current_crtc_and_slot(x, y) ||
+     _expose_global.current_crtc->nstrips < 2)
+    return;
+
+  const unsigned int cur_window_i =
+    _expose_global.current_slot - _expose_global.current_crtc->slots;
+
+  const unsigned int new_line_i =
+    mod(((int) (cur_window_i / _expose_global.current_crtc->nwindows_per_strip)) + index,
+        (int) _expose_global.current_crtc->nstrips);
+
+  for(_expose_window_slot_t *slot = _expose_global.current_crtc->slots +
+        new_line_i * _expose_global.current_crtc->nwindows_per_strip;
+      slot - _expose_global.current_crtc->slots < _expose_global.current_crtc->nwindows;
+      slot++)
+    if(slot->extents.x + slot->extents.width >=
+       _expose_global.current_slot->extents.x +
+       _expose_global.current_slot->extents.width / 2)
+      {
+        _expose_global.current_slot = slot;
+        _expose_pointer_move_center(_expose_global.current_slot->scale_window.window);
+        return;
+      }
+}
+
+static void
+_expose_previous_next_update_current_slot(int16_t x, int16_t y, int index)
+{
+  if(!_expose_update_current_crtc_and_slot(x, y) ||
+     _expose_global.current_crtc->nwindows < 2)
+    return;
+
+  _expose_global.current_slot = _expose_global.current_crtc->slots +
+    mod(_expose_global.current_slot -
+        _expose_global.current_crtc->slots + index,
+        _expose_global.current_crtc->nwindows);
+
+  _expose_pointer_move_center(_expose_global.current_slot->scale_window.window);
+}
+
 static void
 expose_event_handle_key_release(xcb_key_release_event_t *event,
-                                unagi_window_t *window __attribute__((unused)))
+                                unagi_window_t *w __attribute__ ((unused)))
 {
-  if(_expose_global.entered &&
-     unagi_key_getkeysym(event->detail, event->state) == EXPOSE_KEY_QUIT)
-    _expose_quit();
+  if(!_expose_global.entered)
+    return;
+
+  switch(unagi_key_getkeysym(event->detail, event->state))
+    {
+    case EXPOSE_KEY_CRTC_CYCLE:
+      {
+        unsigned int crtc_i;
+        for(crtc_i = 0; crtc_i < globalconf.crtc_len; crtc_i++)
+          if(event->root_x >= globalconf.crtc[crtc_i]->x &&
+             event->root_x <= (globalconf.crtc[crtc_i]->x +
+                               globalconf.crtc[crtc_i]->width) &&
+             event->root_y >= globalconf.crtc[crtc_i]->y &&
+             event->root_y <= (globalconf.crtc[crtc_i]->y +
+                               globalconf.crtc[crtc_i]->height))
+            break;
+
+        // Move the pointer to the middle of the first window of the screen
+        crtc_i = (crtc_i >= (globalconf.crtc_len - 1)) ? 0 : crtc_i + 1;
+        _expose_pointer_move_center(
+          _expose_global.crtc_slots[crtc_i].slots[0].scale_window.window);
+      }
+
+      break;
+
+    case EXPOSE_KEY_WINDOW_UP:
+      _expose_up_down_update_current_slot(event->root_x, event->root_y, -1);
+      break;
+
+    case EXPOSE_KEY_WINDOW_PREV:
+      _expose_previous_next_update_current_slot(event->root_x, event->root_y, -1);
+      break;
+
+    case EXPOSE_KEY_WINDOW_NEXT:
+      _expose_previous_next_update_current_slot(event->root_x, event->root_y, 1);
+      break;
+
+    case EXPOSE_KEY_WINDOW_DOWN:
+      _expose_up_down_update_current_slot(event->root_x, event->root_y, 1);
+      break;
+
+    case EXPOSE_KEY_WINDOW_SELECT:
+      if(_expose_update_current_crtc_and_slot(event->root_x, event->root_y))
+        _expose_show_selected_window();
+
+      break;
+
+    case EXPOSE_KEY_QUIT:
+      _expose_quit();
+      break;
+
+    default:
+      break;
+    }
 }
 
 static void
 expose_event_handle_mapping_notify(xcb_mapping_notify_event_t *e __attribute__((unused)),
                                    unagi_window_t *w __attribute__((unused)))
 {
-  _expose_global.key_quit.keycode = 0;
+  _expose_global.keys.crtc_cycle.keycode = 0;
+  _expose_global.keys.window_up.keycode = 0;
+  _expose_global.keys.window_left.keycode = 0;
+  _expose_global.keys.window_right.keycode = 0;
+  _expose_global.keys.window_down.keycode = 0;
+  _expose_global.keys.window_select.keycode = 0;
+  _expose_global.keys.quit.keycode = 0;
 }
 
 /** Check whether the given window is within the given coordinates
@@ -932,45 +1206,6 @@ _expose_in_window(const int16_t x, const int16_t y,
     y < (int16_t) (window->geometry->y + window_height_with_border(window->geometry));
 }
 
-/** Show the selected window (through _NET_ACTIVE_WINDOW
- *  ClientMessage) after changing desktop (through
- *  _NET_CURRENT_DESKTOP ClientMessage) if necessary.
- *
- * \param window The window object to show
- */
-static void
-_expose_show_selected_window(const unagi_window_t *window)
-{
-  if(window->id == *_expose_global.atoms.active_window)
-    return;
-
-  uint32_t window_desktop;
-  if(!xcb_ewmh_get_wm_desktop_reply(&globalconf.ewmh,
-                                    xcb_ewmh_get_wm_desktop(&globalconf.ewmh,
-                                                            window->id),
-                                    &window_desktop,
-                                    NULL))
-    {
-      unagi_warn("Could not get the current desktop of selected Window");
-      return;
-    }
-
-  if(window_desktop != *_expose_global.atoms.current_desktop)
-    xcb_ewmh_request_change_current_desktop(&globalconf.ewmh,
-                                            globalconf.screen_nbr,
-                                            window_desktop,
-                                            XCB_CURRENT_TIME);
-
-  xcb_ewmh_request_change_active_window(&globalconf.ewmh,
-                                        globalconf.screen_nbr,
-                                        window->id,
-                                        XCB_EWMH_CLIENT_SOURCE_TYPE_OTHER,
-                                        XCB_CURRENT_TIME,
-                                        XCB_NONE);
-
-  unagi_window_map_raised(window);
-}
-
 /** Handle X  ButtonRelease event used  when the user choose  a window
  *  among all the thumbnails displayed by the plugin
  *
@@ -980,27 +1215,9 @@ static void
 expose_event_handle_button_release(xcb_button_release_event_t *event,
 				   unagi_window_t *unused __attribute__ ((unused)))
 {
-  if(!_expose_global.entered)
-    return;
-
-  for(unsigned int crtc_n = 0; crtc_n < globalconf.crtc_len; crtc_n++)
-    {
-      _expose_window_slot_t *slot;
-      for(unsigned int window_n = 0;
-          window_n < _expose_global.crtc_slots[crtc_n].nwindows;
-          window_n++)
-        {
-          slot = _expose_global.crtc_slots[crtc_n].slots + window_n;
-          if(_expose_in_window(event->root_x, event->root_y,
-                               slot->scale_window.window))
-            {
-              unagi_window_t *window = slot->window;
-              _expose_quit();
-              _expose_show_selected_window(window);
-              return;
-            }
-        }
-    }
+  if(_expose_global.entered &&
+     _expose_update_current_crtc_and_slot(event->root_x, event->root_y))
+    _expose_show_selected_window();
 }
 
 /** Convenient  function to  handle X  PropertyNotify event  common to
@@ -1064,26 +1281,37 @@ expose_render_windows(void)
                                                         globalconf.screen->root),
                             NULL);
 
-  unagi_window_t *window = _expose_global.crtc_slots[0].slots->scale_window.window;
-  while(window != NULL)
+  if(query_pointer_reply &&
+     !_expose_coordinates_within_slot(_expose_global.current_slot,
+                                      query_pointer_reply->root_x,
+                                      query_pointer_reply->root_y))
+    _expose_update_current_crtc_and_slot(query_pointer_reply->root_x,
+                                         query_pointer_reply->root_y);
+
+  free(query_pointer_reply);
+
+  unagi_window_t *window_list =
+    _expose_global.crtc_slots[0].slots->scale_window.window;
+
+  for(unagi_window_t *window = window_list; window; window = window->next)
     {
-      if(query_pointer_reply->root_x >= window->geometry->x &&
-         query_pointer_reply->root_y >= window->geometry->y &&
-         query_pointer_reply->root_x <= (window->geometry->x +
-                                         window->geometry->width) &&
-         query_pointer_reply->root_y <= (window->geometry->y +
-                                         window->geometry->height))
+      if(_expose_global.current_slot &&
+         _expose_global.current_slot->scale_window.window == window)
         window->transform_opacity = UINT16_MAX;
       else
         window->transform_opacity = (uint16_t)
           (((double) PLUGIN_NON_FOCUSED_WINDOW_OPACITY * 0xffffffff) / 0xffff);
 
       window->damaged = true;
-      window = window->next;
     }
 
+  _expose_global.current_crtc = NULL;
+  _expose_global.current_slot = NULL;
+
+  /* TODO: Really bad from a performance point of view */
   globalconf.force_repaint = true;
-  return _expose_global.crtc_slots[0].slots->scale_window.window;
+
+  return window_list;
 }
 
 /** Process D-Bus message for org.minidweeb.unagi.plugin.expose D-Bus

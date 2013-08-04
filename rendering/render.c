@@ -282,7 +282,7 @@ _render_init_root_background(void)
   if(picture_error)
     {
       unagi_warn("Could not create background Picture, setting a default background "
-           "color (try using another program to set the background?)");
+                 "color (try using another program to set the background?)");
 
       free(picture_error);
 

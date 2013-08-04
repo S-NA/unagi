@@ -32,6 +32,7 @@
 # include <sys/types.h>
 #endif
 
+#define mod(x, N) ((((x) < 0) ? (((x) % (N)) + (N)) : (x)) % (N))
 #define unagi_ssizeof(foo)            (ssize_t)sizeof(foo)
 #define unagi_countof(foo)            (unagi_ssizeof(foo) / unagi_ssizeof(foo[0]))
 
