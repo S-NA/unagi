@@ -564,8 +564,14 @@ _expose_prepare_windows(_expose_crtc_window_slots_t *crtc_slots,
       if(!_expose_window_need_rescaling(&slot->extents, window_width, window_height))
 	{
 	  unagi_debug("No need to scale %jx", (uintmax_t) slot->window->id);
+
           scale_window = malloc(sizeof(unagi_window_t));
           memcpy(scale_window, slot->window, sizeof(unagi_window_t));
+
+          scale_window->geometry = malloc(sizeof(xcb_get_geometry_reply_t));
+          memcpy(scale_window->geometry, slot->window->geometry,
+                 sizeof(xcb_get_geometry_reply_t));
+
           scale_window->next = NULL;
 	}
       else
@@ -580,8 +586,7 @@ _expose_prepare_windows(_expose_crtc_window_slots_t *crtc_slots,
 
           /* The scale window coordinates are the slot ones */
           scale_window->geometry = calloc(1, sizeof(xcb_get_geometry_reply_t));
-          scale_window->geometry->x = slot->extents.x;
-          scale_window->geometry->y = slot->extents.y;
+
           /* Border width is always equals to 0 as it is scaled anyway */
           scale_window->geometry->border_width = 0;
 
@@ -606,6 +611,12 @@ _expose_prepare_windows(_expose_crtc_window_slots_t *crtc_slots,
 
           scale_window->transform_status = UNAGI_WINDOW_TRANSFORM_STATUS_REQUIRED;
         }
+
+      scale_window->geometry->x = slot->extents.x +
+        (slot->extents.width - scale_window->geometry->width) / 2;
+
+      scale_window->geometry->y = slot->extents.y +
+        (slot->extents.height - scale_window->geometry->height) / 2;
 
       scale_window->damaged = true;
 
@@ -656,11 +667,9 @@ _expose_free_memory(void)
           /* Free memory allocated only for Windows *actually* scaled */
           if(slot->scale_window.window->transform_status !=
              UNAGI_WINDOW_TRANSFORM_STATUS_NONE)
-            {
-              (*globalconf.rendering->free_window)(slot->window);
-              unagi_util_free(&(slot->scale_window.window->geometry));
-            }
+            (*globalconf.rendering->free_window)(slot->window);
 
+          unagi_util_free(&(slot->scale_window.window->geometry));
           unagi_util_free(&(slot->scale_window.window));
         }
 
