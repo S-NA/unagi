@@ -144,6 +144,8 @@ typedef struct _unagi_conf_t
 
   DBusConnection *dbus_connection;
   ev_io dbus_event_io;
+  /** DRM FD for VSync */
+  int vsync_drm_fd;
 } unagi_conf_t;
 
 extern unagi_conf_t globalconf;

@@ -26,6 +26,7 @@ AC_PROG_LIBTOOL
 UNAGI_REQUIRES="libxdg-basedir >= 1.0.0 \
  libconfuse \
  dbus-1 \
+ libdrm \
  xcb >= 1.8 \
  xcb-proto >= 1.6 \
  xcb-composite \

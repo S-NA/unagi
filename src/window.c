@@ -709,7 +709,10 @@ unagi_window_paint_all(unagi_window_t *windows)
         }
     }
 
+  xcb_flush(globalconf.connection);
+  display_vsync_drm_wait();
   (*globalconf.rendering->paint_all)();
+
   globalconf.background_reset = false;
   xcb_aux_sync(globalconf.connection);
 }

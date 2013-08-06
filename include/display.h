@@ -49,6 +49,10 @@ void unagi_display_add_damaged_region(xcb_xfixes_region_t *, bool);
 void unagi_display_reset_damaged(void);
 
 void unagi_display_update_screen_information(xcb_randr_get_screen_info_cookie_t,
-                                       xcb_randr_get_screen_resources_cookie_t);
+                                             xcb_randr_get_screen_resources_cookie_t);
+
+bool display_vsync_drm_init(void);
+int display_vsync_drm_wait(void);
+void display_vsync_drm_cleanup(void);
 
 #endif

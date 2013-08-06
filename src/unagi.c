@@ -71,6 +71,7 @@ static bool
 _unagi_parse_configuration_file(FILE *config_fp)
 {
   cfg_opt_t opts[] = {
+    CFG_BOOL("vsync-drm", cfg_false, CFGF_NONE),
     CFG_STR("rendering", "render", CFGF_NONE),
     CFG_STR_LIST("plugins", "{}", CFGF_NONE),
     CFG_END()
@@ -236,6 +237,7 @@ _unagi_exit_cleanup(void)
   unagi_dbus_cleanup();
 
   ev_loop_destroy(globalconf.event_loop);
+  display_vsync_drm_cleanup();
 }
 
 /** Perform  cleanup when  a  signal (SIGHUP,  SIGINT  or SIGTERM)  is
@@ -419,6 +421,11 @@ main(int argc, char **argv)
   globalconf.connection = xcb_connect(NULL, &globalconf.screen_nbr);
   if(xcb_connection_has_error(globalconf.connection))
     unagi_fatal("Cannot open display");
+
+  if(cfg_getbool(globalconf.cfg, "vsync-drm"))
+    display_vsync_drm_init();
+  else
+    globalconf.vsync_drm_fd = -1;
 
   /* Get the root window */
   globalconf.screen = xcb_aux_get_screen(globalconf.connection,

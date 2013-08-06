@@ -24,6 +24,14 @@
 #include <stdlib.h>
 #include <string.h>
 #include <assert.h>
+#include <errno.h>
+#include <sys/types.h>
+#include <sys/types.h>
+#include <sys/ioctl.h>
+#include <fcntl.h>
+#include <unistd.h>
+
+#include <libdrm/drm.h>
 
 #include <xcb/composite.h>
 #include <xcb/xfixes.h>
@@ -503,4 +511,54 @@ unagi_display_update_screen_information(xcb_randr_get_screen_info_cookie_t scree
       globalconf.crtc[0]->width = globalconf.screen->width_in_pixels;
       globalconf.crtc[0]->height = globalconf.screen->height_in_pixels;
     }
+}
+
+bool
+display_vsync_drm_init(void)
+{
+  if((globalconf.vsync_drm_fd = open("/dev/dri/card0", O_RDWR)) < 0)
+    {
+      unagi_warn("Failed to open DRM device: %s, disabling VSync with DRM",
+                 strerror(errno));
+
+      return false;
+    }
+
+  return true;
+}
+
+/**
+ * Block until the next VSync
+ *
+ * Taken from compton
+ */
+int
+display_vsync_drm_wait(void)
+{
+  if(globalconf.vsync_drm_fd < 0)
+    return 0;
+
+  int ret = -1;
+  drm_wait_vblank_t vbl;
+  vbl.request.type = _DRM_VBLANK_RELATIVE;
+  vbl.request.sequence = 1;
+
+  do
+    {
+      ret = ioctl(globalconf.vsync_drm_fd, DRM_IOCTL_WAIT_VBLANK, &vbl);
+      vbl.request.type &= ~_DRM_VBLANK_RELATIVE;
+    }
+  while(ret && errno == EINTR);
+
+  if(ret)
+    unagi_warn("VBlank ioctl failed, not implemented in this driver?");
+
+  return ret;
+}
+
+void
+display_vsync_drm_cleanup(void)
+{
+  if(globalconf.vsync_drm_fd >= 0)
+    close(globalconf.vsync_drm_fd);
 }
