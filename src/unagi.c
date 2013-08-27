@@ -265,6 +265,9 @@ _unagi_paint_callback(EV_P_ ev_timer *w, int revents)
   /* Now paint the windows */
   if(globalconf.damaged || globalconf.force_repaint)
     {
+      if(globalconf.force_repaint)
+        unagi_display_reset_damaged();
+
       globalconf.force_repaint = false;
 #ifdef __DEBUG__
       unagi_debug("COUNT: %u: Begin re-painting", globalconf.paint_counter);
