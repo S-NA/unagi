@@ -713,10 +713,8 @@ _expose_prepare_windows(_expose_crtc_window_slots_t *crtc_slots,
           /* Compute the ratio from the  largest side (width or height) of
              the window */
           const float ratio =
-            ((window_width - slot->extents.width) >
-             (window_height - slot->extents.height)) ?
-            (float) slot->extents.width / (float) window_width :
-            (float) slot->extents.height / (float) window_height;
+            min((float) slot->extents.width / (float) window_width,
+                (float) slot->extents.height / (float) window_height);
 
           scale_window->geometry->width = (uint16_t)
             floorf(ratio * (float) window_width);
