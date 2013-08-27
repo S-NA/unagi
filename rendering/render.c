@@ -619,7 +619,7 @@ render_paint_window(unagi_window_t *window)
   uint8_t render_composite_op = XCB_RENDER_PICT_OP_SRC;
   xcb_render_picture_t alpha_picture = XCB_NONE;
 
-#define _SET_ALPHA_PICTURE(opacity)                          \
+#define _SET_ALPHA_PICTURE(opacity)                             \
   {                                                             \
     alpha_picture =                                             \
       _render_get_window_alpha_picture(render_window, opacity); \
@@ -680,6 +680,11 @@ render_paint_window(unagi_window_t *window)
         xcb_render_set_picture_transform(globalconf.connection,
                                          render_window->picture,
                                          render_transform);
+
+        xcb_render_set_picture_filter(globalconf.connection,
+                                      render_window->picture,
+                                      sizeof("good"), "good",
+                                      0, NULL);
       }
 
       window->transform_status = UNAGI_WINDOW_TRANSFORM_STATUS_DONE;
