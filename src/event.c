@@ -441,11 +441,14 @@ event_handle_configure_notify(xcb_configure_notify_event_t *event)
             the Window Region but would it really change anything from
             a performance POV?
   */
+  bool is_not_visible = false;
   if(unagi_window_is_visible(window))
     {
       unagi_display_add_damaged_region(&window->region, true);
       window->damaged_ratio = 1.0;
     }
+  else
+    is_not_visible = true;
 
   /* Update geometry */
   window->geometry->x = event->x;
@@ -471,6 +474,16 @@ event_handle_configure_notify(xcb_configure_notify_event_t *event)
   if(unagi_window_is_visible(window))
     {
       window->region = unagi_window_get_region(window, true, false);
+
+      /* This is needed to ensure that a window that was mapped
+         outside the screen, and moved inside after, will be shown. An
+         example is the gnome panel */
+      if(is_not_visible)
+        {
+          update_pixmap = true;
+          unagi_display_add_damaged_region(&window->region, true);
+          window->damaged_ratio = 1.0;
+        }
 
       if(update_pixmap)
         {
