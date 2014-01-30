@@ -1,4 +1,4 @@
-INCLUDES = -I$(top_srcdir)/include $(UNAGI_CFLAGS)
+AM_CPPFLAGS = -I$(top_srcdir)/include $(UNAGI_CFLAGS)
 
 opacity_la_LDFLAGS = -no-undefined -module -avoid-version
 opacity_la_SOURCES = opacity.c
