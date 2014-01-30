@@ -21,12 +21,10 @@
  *  \brief Exposé effect plugin
  *
  *  This plugin implements (roughly) Expose  feature as seen in Mac OS
- *  X and Compiz  (known as Scale plugin) but  is not really optimised
- *  (yet) because it repaints all  the windows even if the content has
- *  not been changed  and it should also maybe  use SHM for xcb_image.
- *  The window  slots could be arranged  in a better  way by including
- *  the window geometry in the computation and the rescaling algorithm
- *  should be improved to decrease the blurry effect.
+ *  X and Compiz  (known as Scale plugin) but is  not really optimised
+ *  (yet) because it repaints all the  windows even if the content has
+ *  not been changed.  The window slots  could be arranged in a better
+ *  way by including the window geometry in the computation.
  *
  *  It relies  on _NET_CLIENT_LIST  (required otherwise the  plugin is
  *  disabled),  _NET_ACTIVE_WINDOW  atoms   (required  and  stored  in
@@ -57,12 +55,8 @@
  *   4/ For  each window, create  a new 'unagi_window_t'  object which
  *      will be then given to 'unagi_window_paint_all' function of the
  *      core code.  If the window needs to be rescaled (e.g.  when the
- *      window does not fit the slot),  create a new Image, Pixmap and
- *      GC ('_expose_prepare_windows'). Then (and each time the window
- *      is repainted),  get the Image  of the original window  and get
- *      each  pixel which  will  then  be put  on  the rescaled  Image
- *      ('_expose_update_scale_pixmap')  using a  Gaussian-filter-like
- *      rescaled algorithm.
+ *      window  does  not fit  the  slot),  then  it is  done  through
+ *      Render.
  */
 
 #include <math.h>
@@ -74,7 +68,6 @@
 #include <xcb/xcb.h>
 #include <xcb/xcb_ewmh.h>
 #include <xcb/xcb_keysyms.h>
-#include <xcb/xcb_image.h>
 #include <xcb/xcb_aux.h>
 
 #include "structs.h"
