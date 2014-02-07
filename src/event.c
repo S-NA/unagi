@@ -478,17 +478,12 @@ event_handle_configure_notify(xcb_configure_notify_event_t *event)
       /* This is needed to ensure that a window that was mapped
          outside the screen, and moved inside after, will be shown. An
          example is the gnome panel */
-      if(is_not_visible)
-        {
-          update_pixmap = true;
-          unagi_display_add_damaged_region(&window->region, true);
-          window->damaged_ratio = 1.0;
-        }
-
-      if(update_pixmap)
+      if(update_pixmap || is_not_visible)
         {
           unagi_window_free_pixmap(window);
           window->pixmap = unagi_window_get_pixmap(window);
+          unagi_display_add_damaged_region(&window->region, false);
+          window->damaged_ratio = 1.0;
         }
     }
 
