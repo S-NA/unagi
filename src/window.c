@@ -50,19 +50,21 @@ window_list_append(const xcb_window_t new_window_id)
   unagi_window_t *new_window = calloc(1, sizeof(unagi_window_t));
 
   new_window->id = new_window_id;
+  new_window->prev = NULL;
+  new_window->next = NULL;
 
   /* If the windows list is empty */
   if(globalconf.windows == NULL)
-    globalconf.windows = new_window;
+    {
+      globalconf.windows = new_window;
+      globalconf.windows_tail = new_window;
+    }
   else
     {
       /* Otherwise, append to the end of the list */
-      unagi_window_t *unagi_window_tail;
-      for(unagi_window_tail = globalconf.windows; unagi_window_tail->next;
-	  unagi_window_tail = unagi_window_tail->next)
-	;
-
-      unagi_window_tail->next = new_window;
+      globalconf.windows_tail->next = new_window;
+      new_window->prev = globalconf.windows_tail;
+      globalconf.windows_tail = new_window;
     }
 
   globalconf.windows_itree = util_itree_insert(globalconf.windows_itree,
@@ -107,29 +109,29 @@ window_list_free_window(unagi_window_t *window, bool do_itree_remove)
 
 /** Remove the given window object from the windows list
  *
- * \param window_delete
+ * \param window The window to remove from the windows list
+ * \param do_delete If true, also free the memory used by the window structure
  */
 void
-unagi_window_list_remove_window(unagi_window_t *window_delete)
+unagi_window_list_remove_window(unagi_window_t *window, bool do_delete)
 {
-  if(!globalconf.windows)
+  if(!window || !globalconf.windows)
     return;
 
-  if(globalconf.windows == window_delete)
-    {
-      unagi_window_t *old_window = globalconf.windows;
-      globalconf.windows = globalconf.windows->next;
+  if(window->next)
+    window->next->prev = window->prev;
 
-      window_list_free_window(old_window, true);
-    }
-  else
-    for(unagi_window_t *window = globalconf.windows; window->next; window = window->next)
-      if(window->next == window_delete)
-	{
-	  window->next = window->next->next;
-	  window_list_free_window(window_delete, true);
-	  break;
-	}
+  if(window->prev)
+    window->prev->next = window->next;
+
+  if(globalconf.windows == window)
+    globalconf.windows = window->next;
+
+  if(globalconf.windows_tail == window)
+    globalconf.windows_tail = window->prev;
+
+  if(do_delete)
+    window_list_free_window(window, true);
 }
 
 /** Free all resources allocated for the windows list */
@@ -547,7 +549,7 @@ unagi_window_manage_existing(const int nwindows,
 					window_add_cookies[nwindow]))
 	{
           unagi_warn("Cannot manage window %jx", (uintmax_t) new_windows_id[nwindow]);
-	  unagi_window_list_remove_window(new_windows[nwindow]);
+	  unagi_window_list_remove_window(new_windows[nwindow], true);
 	  continue;
 	}
 
@@ -593,7 +595,7 @@ window_add(const xcb_window_t new_window_id, bool get_geometry)
   /* The request should never fail... */
   if(!window_add_requests_finalise(new_window, cookies))
     {
-      unagi_window_list_remove_window(new_window);
+      unagi_window_list_remove_window(new_window, true);
       return NULL;
     }
 
@@ -632,38 +634,40 @@ unagi_window_restack(unagi_window_t *window, xcb_window_t window_new_above_id)
   assert(globalconf.windows);
   assert(window);
 
-  /* Remove the window from the list */
-  if(globalconf.windows == window)
-    globalconf.windows = window->next;
-  else
-    {
-      unagi_window_t *old_window_below;
-      for(old_window_below = globalconf.windows;
-	  old_window_below && old_window_below->next != window;
-	  old_window_below = old_window_below->next)
-	;
-
-      old_window_below->next = window->next;
-    }
-
   /* If the  window is on the bottom  of the stack, then  insert it at
      the beginning of the windows list */
   if(window_new_above_id == XCB_NONE)
     {
+      /* Remove the window from the list, but don't delete its data */
+      unagi_window_list_remove_window(window, false);
+
       window->next = globalconf.windows;
+      window->prev = NULL;
       globalconf.windows = window;
+      if(window->next)
+        window->next->prev = window;
+      else
+        globalconf.windows_tail = window;
     }
   /* Otherwise insert it before the above window */
   else
     {
-      unagi_window_t *window_below;
-      for(window_below = globalconf.windows;
-	  window_below->next && window_below->id != window_new_above_id;
-	  window_below = window_below->next)
-	;
+      /* If it is asked to put a window below itself, or the asked
+         window doesn't exists, do nothing */
+      unagi_window_t *window_below = unagi_window_list_get(window_new_above_id);
+      if(window_below == window || window_below == NULL)
+        return;
+
+      /* Remove the window from the list, but don't delete its data */
+      unagi_window_list_remove_window(window, false);
 
       window->next = window_below->next;
+      window->prev = window_below;
       window_below->next = window;
+      if(window->next)
+        window->next->prev = window;
+      else
+        globalconf.windows_tail = window;
     }
 }
 

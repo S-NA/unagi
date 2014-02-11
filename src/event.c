@@ -561,7 +561,7 @@ event_handle_destroy_notify(xcb_destroy_notify_event_t *event)
 
   UNAGI_PLUGINS_EVENT_HANDLE(event, destroy, window);
 
-  unagi_window_list_remove_window(window);
+  unagi_window_list_remove_window(window, true);
 }
 
 /** Handler for  MapNotify event reported when a  MapWindow request is
@@ -620,7 +620,7 @@ event_handle_reparent_notify(xcb_reparent_notify_event_t *event)
     window_add(event->window, true);
   /* Don't manage the window if the parent is not the root window */
   else
-    unagi_window_list_remove_window(window);
+    unagi_window_list_remove_window(window, true);
 
   UNAGI_PLUGINS_EVENT_HANDLE(event, reparent, window);
 }

@@ -100,6 +100,7 @@ typedef struct _unagi_conf_t
   xcb_window_t cm_window;
   /** The list of all windows as objects */
   unagi_window_t *windows;
+  unagi_window_t *windows_tail;
   /** Binary Trees used for lookups (The list is still useful for stack order) */
   unagi_util_itree_t *windows_itree;
   /** Damaged region which must be repainted */

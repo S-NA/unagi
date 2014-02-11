@@ -58,6 +58,7 @@ typedef struct _unagi_window_t
   uint16_t transform_opacity;
   void *rendering;
   struct _unagi_window_t *next;
+  struct _unagi_window_t *prev;
 } unagi_window_t;
 
 void unagi_window_free_pixmap(unagi_window_t *);
@@ -73,7 +74,7 @@ void unagi_window_list_cleanup(void);
 #define unagi_window_list_get(WINDOW_ID) util_itree_get(globalconf.windows_itree, \
                                                         WINDOW_ID)
 
-void unagi_window_list_remove_window(unagi_window_t *);
+void unagi_window_list_remove_window(unagi_window_t *, bool);
 void unagi_window_register_notify(const unagi_window_t *);
 void unagi_window_get_root_background_pixmap(void);
 xcb_pixmap_t unagi_window_get_root_background_pixmap_finalise(void);
