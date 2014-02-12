@@ -737,25 +737,20 @@ _expose_prepare_windows(_expose_crtc_window_slots_t *crtc_slots,
 
       scale_window_prev = scale_window;
       slot->scale_window.window = scale_window;
-    }
 
 #ifdef __DEBUG__
-  for(unsigned int i = 0; i < crtc_slots->nwindows; i++)
-    {
-      slot = crtc_slots->slots[i];
-
       unagi_debug("slot: x=%jd, y=%jd, width=%ju, height=%ju",
-	    (intmax_t) slot->extents.x, (intmax_t) slot->extents.y,
-	    (uintmax_t) slot->extents.width, (uintmax_t) slot->extents.height);
+                  (intmax_t) slot->extents.x, (intmax_t) slot->extents.y,
+                  (uintmax_t) slot->extents.width, (uintmax_t) slot->extents.height);
 
       unagi_debug("scale_window: id=%jx, x=%jd, y=%jd, width=%ju, height=%ju",
-	    (uintmax_t) slot->scale_window.window->id,
-	    (intmax_t) slot->scale_window.window->geometry->x,
-	    (intmax_t) slot->scale_window.window->geometry->y,
-	    (uintmax_t) slot->scale_window.window->geometry->width,
-	    (uintmax_t) slot->scale_window.window->geometry->height);
-    }
+                  (uintmax_t) slot->scale_window.window->id,
+                  (intmax_t) slot->scale_window.window->geometry->x,
+                  (intmax_t) slot->scale_window.window->geometry->y,
+                  (uintmax_t) slot->scale_window.window->geometry->width,
+                  (uintmax_t) slot->scale_window.window->geometry->height);
 #endif
+    }
 }
 
 static void
