@@ -229,6 +229,10 @@ _unagi_exit_cleanup(void)
       if(globalconf.cm_window != XCB_NONE)
         xcb_destroy_window(globalconf.connection, globalconf.cm_window);
 
+      /* Make sure that all X requests to free Resources have been
+         received by the server before disconnecting */
+      xcb_aux_sync(globalconf.connection);
+
       xcb_disconnect(globalconf.connection);
     }
 
