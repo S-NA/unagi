@@ -276,20 +276,9 @@ _unagi_paint_callback(EV_P_ ev_timer *w, int revents)
       if(globalconf.force_repaint)
         unagi_display_reset_damaged();
 
-      globalconf.force_repaint = false;
 #ifdef __DEBUG__
       unagi_debug("COUNT: %u: Begin re-painting", globalconf.paint_counter);
-#endif
-      unagi_window_t *windows = NULL;
-      for(unagi_plugin_t *plugin = globalconf.plugins; plugin; plugin = plugin->next)
-        if(plugin->enable && plugin->vtable->render_windows &&
-           (windows = (*plugin->vtable->render_windows)()))
-          break;
 
-      if(!windows)
-        windows = globalconf.windows;
-
-#ifdef __DEBUG__
       /* Display damaged regions */
       xcb_xfixes_fetch_region_reply_t *r = \
         xcb_xfixes_fetch_region_reply(globalconf.connection,
@@ -309,8 +298,9 @@ _unagi_paint_callback(EV_P_ ev_timer *w, int revents)
           free(r);
         }
 #endif
-      unagi_window_paint_all(windows);
-      unagi_display_reset_damaged();
+      unagi_window_paint_all(globalconf.windows);
+      if(!globalconf.force_repaint)
+        unagi_display_reset_damaged();
 
       const float paint_time = (float) (ev_time() - ev_now(globalconf.event_loop));
       globalconf.paint_time_sum += paint_time;
@@ -360,6 +350,7 @@ _unagi_paint_callback(EV_P_ ev_timer *w, int revents)
       /* Some events may have been queued while calling this callback,
          so make sure by calling this watcher again */
       ev_invoke(globalconf.event_loop, &globalconf.event_io_watcher, 0);
+      globalconf.force_repaint = false;
     }
 }
 

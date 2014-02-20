@@ -107,8 +107,6 @@ typedef struct
       plugins can add/remove Region from the damaged Region and thus
       trigger/untrigger repaint at their convenience */
   void (*pre_paint)(void);
-  /** Hook to allow plugins to provide their own windows */
-  unagi_window_t *(*render_windows)(void);
   /** Hook after repainting all windows */
   void (*post_paint)(void);
 } unagi_plugin_vtable_t;

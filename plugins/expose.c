@@ -52,11 +52,11 @@
  *      also set OverrideRedirect attribute  to ensure that the window
  *      manager will not care about them anymore.
  *
- *   4/ For  each window, create  a new 'unagi_window_t'  object which
- *      will be then given to 'unagi_window_paint_all' function of the
- *      core code.  If the window needs to be rescaled (e.g.  when the
- *      window  does  not fit  the  slot),  then  it is  done  through
- *      Render.
+ *   4/ For  each window, create  a new 'unagi_window_t'  object, thus
+ *      creating  a new  list of  windows which  will override  global
+ *      Windows list  and itree  while the Expose  is running.  If the
+ *      window needs  to be rescaled  (e.g.  when the window  does not
+ *      fit the slot), then it is done through Render.
  */
 
 #include <math.h>
@@ -181,6 +181,13 @@ static struct
   _expose_window_slot_t *current_slot;
   /** Keyboards keys handled by this plugin */
   _expose_keys_t keys;
+  /** Global windows list context before Expose overrides it while running */
+  unagi_window_t *windows_head_before_enter;
+  unagi_window_t *windows_tail_before_enter;
+  unagi_util_itree_t *windows_itree_before_enter;
+  /** Mouse pointer position */
+  int16_t pointer_x;
+  int16_t pointer_y;
 } _expose_global;
 
 #define GRAB_KEY(key_name)                                              \
@@ -694,6 +701,7 @@ _expose_prepare_windows(_expose_crtc_window_slots_t *crtc_slots,
         {
           scale_window = calloc(1, sizeof(unagi_window_t));
           scale_window->id = slot->window->id;
+          scale_window->damage = slot->window->damage;
           scale_window->attributes = slot->window->attributes;
           scale_window->rendering = slot->window->rendering;
           /* The Pixmap is needed for previously unmapped windows to
@@ -733,10 +741,33 @@ _expose_prepare_windows(_expose_crtc_window_slots_t *crtc_slots,
         (slot->extents.height - scale_window->geometry->height) / 2;
 
       scale_window->damaged = true;
+      scale_window->damaged_ratio = 1.0;
+
+      /* Consider the window non-focused, actually handle later by
+         expose_pre_paint() */
+      scale_window->transform_opacity = EXPOSE_NON_FOCUSED_WINDOW_OPACITY;
+
+      /* Create the region for the scaled window, added to global
+         damaged Region upon receiving DamageNotify event */
+      scale_window->region = xcb_generate_id(globalconf.connection);
+
+      xcb_rectangle_t area = {
+        .x = scale_window->geometry->x,
+        .y = scale_window->geometry->y,
+        .width = scale_window->geometry->width,
+        .height = scale_window->geometry->height };
+
+      xcb_xfixes_create_region(globalconf.connection,
+                               scale_window->region, 1, &area);
 
       /* Link the previous element with the current one */
+      scale_window->prev = *scale_window_prev;
       if(*scale_window_prev)
 	(*scale_window_prev)->next = scale_window;
+
+      globalconf.windows_itree = util_itree_insert(globalconf.windows_itree,
+                                                   scale_window->id,
+                                                   scale_window);
 
       *scale_window_prev = scale_window;
       slot->scale_window.window = scale_window;
@@ -762,6 +793,12 @@ _expose_prepare_windows(_expose_crtc_window_slots_t *crtc_slots,
 static void
 _expose_free_memory(void)
 {
+  unagi_util_itree_free(globalconf.windows_itree);
+
+  globalconf.windows_itree = _expose_global.windows_itree_before_enter;
+  globalconf.windows = _expose_global.windows_head_before_enter;
+  globalconf.windows_tail = _expose_global.windows_tail_before_enter;
+
   _expose_window_slot_t *slot;
   for(unsigned int crtc_n = 0; crtc_n < globalconf.crtc_len; crtc_n++)
     {
@@ -782,6 +819,9 @@ _expose_free_memory(void)
             (*globalconf.rendering->free_window)(slot->window);
 
           unagi_util_free(&(slot->scale_window.window->geometry));
+          xcb_xfixes_destroy_region(globalconf.connection,
+                                    slot->scale_window.window->region);
+
           unagi_util_free(&(slot->scale_window.window));
         }
 
@@ -980,10 +1020,16 @@ _expose_enter(void)
    *  \todo improve focus handling
    */
   const xcb_grab_pointer_cookie_t grab_pointer_cookie =
-    xcb_grab_pointer_unchecked(globalconf.connection, false, globalconf.screen->root,
-			       XCB_EVENT_MASK_BUTTON_RELEASE, XCB_GRAB_MODE_ASYNC,
-			       XCB_GRAB_MODE_ASYNC, XCB_NONE, XCB_NONE,
-			       XCB_CURRENT_TIME);
+    xcb_grab_pointer_unchecked(globalconf.connection,
+                               false,
+                               globalconf.screen->root,
+                               XCB_EVENT_MASK_BUTTON_RELEASE |
+                               XCB_EVENT_MASK_POINTER_MOTION,
+                               XCB_GRAB_MODE_ASYNC,
+                               XCB_GRAB_MODE_ASYNC,
+                               globalconf.screen->root,
+                               XCB_NONE,
+                               XCB_CURRENT_TIME);
 
   /* Grab  the keyboard  in an  active way  to avoid  "weird" behavior
      (e.g. being  able to type in  a window which may  be not selected
@@ -1004,12 +1050,21 @@ _expose_enter(void)
   GRAB_KEY(window_select);
   GRAB_KEY(quit);
 
+  _expose_global.windows_itree_before_enter = globalconf.windows_itree;
+  globalconf.windows_itree = util_itree_new();
+
   unagi_window_t *prev_window = NULL;
   for(unsigned int i = 0; i < globalconf.crtc_len; i++)
     {
       _expose_crtc_window_slots_t *crtc_slots = _expose_global.crtc_slots + i;
       _expose_prepare_windows(crtc_slots, &prev_window);
     }
+
+  _expose_global.windows_head_before_enter = globalconf.windows;
+  globalconf.windows = _expose_global.crtc_slots[0].slots->scale_window.window;
+
+  _expose_global.windows_tail_before_enter = globalconf.windows_tail;
+  globalconf.windows_tail = prev_window;
 
   if(!_expose_grab_finalize(&grab_pointer_cookie, &grab_keyboard_cookie))
     {
@@ -1018,11 +1073,9 @@ _expose_enter(void)
       return false;
     }
 
-  /* TODO: Really bad from a performance point of view */
   globalconf.force_repaint = true;
 
   _expose_global.entered = true;
-
   unagi_debug("=> Entered");
   return true;
 }
@@ -1109,6 +1162,23 @@ _expose_previous_next_update_current_slot(int16_t x, int16_t y, int index)
         _expose_global.current_crtc->nwindows);
 
   _expose_pointer_move_center(_expose_global.current_slot->scale_window.window);
+}
+
+/** Handle Damage Notify and called before the core DamageNotify event handler.
+ *
+ *  @todo For now repaint the whole content of the rescaled Window,
+ *        but this could be optimised by only repainting the damaged
+ *        area...
+ */
+static void
+expose_event_handle_damage_notify(xcb_damage_notify_event_t *event,
+                                  unagi_window_t *window)
+{
+  /* Hackish: consider the Window not damaged so the core event
+     handler will consider it as never painted and it will be
+     repainted it completely */
+  if(_expose_global.entered && window->damaged_ratio != 1.0)
+    window->damaged = false;
 }
 
 static void
@@ -1215,6 +1285,19 @@ expose_event_handle_button_release(xcb_button_release_event_t *event,
     _expose_show_selected_window();
 }
 
+/** Save the current pointer state at each MotionNotify, so in
+ *  pre_repaint() hook, the Window under the last received
+ *  MotionNotify will be considered focused and its opacity sets to
+ *  opaque
+ */
+static void
+expose_event_handle_motion_notify(xcb_motion_notify_event_t *event,
+                                  unagi_window_t *w __attribute__((unused)))
+{
+  _expose_global.pointer_x = event->root_x;
+  _expose_global.pointer_y = event->root_y;
+}
+
 /** Convenient  function to  handle X  PropertyNotify event  common to
  *  _NET_CLIENT_LIST, _NET_ACTIVE_WINDOW and _NET_CURRENT_DESKTOP
  *
@@ -1259,53 +1342,72 @@ expose_event_handle_property_notify(xcb_property_notify_event_t *event,
 					    &_expose_global.atoms.current_desktop_cookie);
 }				    
 
-/** If the plugin is enabled, update the scaled Pixmap and then return
- *  the scaled windows objects
- *
- * \return The beginning of the scaled windows list
+/** If the Pointer is under a different Window than before, then the
+ *  current Window under the Pointer is considered focused (eg opaque
+ *  opacity) and added to the global damaged Region and the previously
+ *  focused Window is also added to the damaged Region as it is not
+ *  opaque anymore
  */
-static unagi_window_t *
-expose_render_windows(void)
+static void
+expose_pre_paint(void)
 {
-  if(!_expose_global.entered)
-    return NULL;
+  if(!_expose_global.entered ||
+     _expose_coordinates_within_slot(_expose_global.current_slot,
+                                     _expose_global.pointer_x,
+                                     _expose_global.pointer_y))
+    return;
 
-  xcb_query_pointer_reply_t *query_pointer_reply =
-    xcb_query_pointer_reply(globalconf.connection,
-                            xcb_query_pointer_unchecked(globalconf.connection,
-                                                        globalconf.screen->root),
-                            NULL);
-
-  if(query_pointer_reply &&
-     !_expose_coordinates_within_slot(_expose_global.current_slot,
-                                      query_pointer_reply->root_x,
-                                      query_pointer_reply->root_y))
-    _expose_update_current_crtc_and_slot(query_pointer_reply->root_x,
-                                         query_pointer_reply->root_y);
-
-  free(query_pointer_reply);
+  _expose_update_current_crtc_and_slot(_expose_global.pointer_x,
+                                       _expose_global.pointer_y);
 
   unagi_window_t *window_list =
     _expose_global.crtc_slots[0].slots->scale_window.window;
 
   for(unagi_window_t *window = window_list; window; window = window->next)
     {
+      uint16_t new_opacity;
+
       if(_expose_global.current_slot &&
          _expose_global.current_slot->scale_window.window == window)
-        window->transform_opacity = UINT16_MAX;
+        new_opacity = UINT16_MAX;
       else
-        window->transform_opacity = EXPOSE_NON_FOCUSED_WINDOW_OPACITY;
+        new_opacity = EXPOSE_NON_FOCUSED_WINDOW_OPACITY;
 
-      window->damaged = true;
+      if(new_opacity != window->transform_opacity && !window->damaged)
+        {
+          window->damaged = true;
+          window->damaged_ratio = 1.0;
+          unagi_display_add_damaged_region(&window->region, false);
+        }
+
+      window->transform_opacity = new_opacity;
+
+      unagi_debug("Window %jx: Set opacity for: opaque=%d, pointer: x=%d, y=%d",
+                  window->id, window->transform_opacity == UINT16_MAX,
+                  _expose_global.pointer_x, _expose_global.pointer_y);
+    }
+}
+
+/** Expose-specific optimization: as Windows do not overlap in Expose
+ *  (and thus there is no Window compositing required), paint a Window
+ *  for next repaint if a DamageNotify event has been received for
+ *  that Window, otherwise leave it as it is...
+ */
+static void
+expose_post_paint(void)
+{
+  if(!_expose_global.entered)
+    return;
+
+  for(unagi_window_t *window = _expose_global.crtc_slots[0].slots->scale_window.window;
+      window;
+      window = window->next)
+    {
+      window->damaged = false;
+      window->damaged_ratio = 0.0;
     }
 
-  _expose_global.current_crtc = NULL;
-  _expose_global.current_slot = NULL;
-
-  /* TODO: Really bad from a performance point of view */
-  globalconf.force_repaint = true;
-
-  return window_list;
+  unagi_debug("Painting finished");
 }
 
 /** Process D-Bus message for org.minidweeb.unagi.plugin.expose D-Bus
@@ -1354,13 +1456,13 @@ unagi_plugin_vtable_t plugin_vtable = {
   .name = _PLUGIN_NAME,
   .dbus_process_message = expose_dbus_process_message,
   .events = {
-    NULL,
+    expose_event_handle_damage_notify,
     NULL,
     NULL,
     expose_event_handle_key_release,
     expose_event_handle_mapping_notify,
     expose_event_handle_button_release,
-    NULL,
+    expose_event_handle_motion_notify,
     NULL,
     NULL,
     NULL,
@@ -1373,7 +1475,6 @@ unagi_plugin_vtable_t plugin_vtable = {
   .check_requirements = expose_check_requirements,
   .window_manage_existing = NULL,
   .window_get_opacity = NULL,
-  .pre_paint = NULL,
-  .render_windows = expose_render_windows,
-  .post_paint = NULL
+  .pre_paint = expose_pre_paint,
+  .post_paint = expose_post_paint
 };

@@ -251,16 +251,19 @@ event_handle_damage_notify(xcb_damage_notify_event_t *event)
 #endif
 
   unagi_window_t *window = unagi_window_list_get(event->drawable);
-  xcb_xfixes_region_t damaged_region;
-  bool is_temporary_region = false;
-
   /* The window may have disappeared in the meantime or is not visible
      so do nothing */
   if(!window || !unagi_window_is_visible(window))
     return;
+
+  UNAGI_PLUGINS_EVENT_HANDLE(event, damage, window);
+
+  xcb_xfixes_region_t damaged_region;
+  bool is_temporary_region = false;
+
   /* If the Window has never been  damaged, then it means it has never
      be painted on the screen yet, thus paint its entire content */
-  else if(!window->damaged)
+  if(!window->damaged)
     {
       damaged_region = window->region;
       window->damaged = true;
@@ -304,8 +307,6 @@ event_handle_damage_notify(xcb_damage_notify_event_t *event)
     }
 
   unagi_display_add_damaged_region(&damaged_region, is_temporary_region);
-
-  UNAGI_PLUGINS_EVENT_HANDLE(event, damage, window);
 }
 
 /** Handler for RRScreenChangeNotify events reported when the screen
