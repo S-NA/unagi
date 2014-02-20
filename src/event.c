@@ -237,12 +237,11 @@ unagi_event_handle_startup(xcb_generic_event_t *event)
 static void
 event_handle_damage_notify(xcb_damage_notify_event_t *event)
 {
-  unagi_debug("DamageNotify: area: %jux%ju %+jd %+jd (drawable=%jx,area=%jux%ju +%jd +%jd,geometry=%jux%ju +%jd +%jd)",
+  unagi_debug("DamageNotify: area: %jux%ju %+jd %+jd "
+              "(drawable=%jx,geometry=%jux%ju +%jd +%jd)",
               (uintmax_t) event->area.width, (uintmax_t) event->area.height,
               (intmax_t) event->area.x, (intmax_t) event->area.y,
               (uintmax_t) event->drawable,
-              (uintmax_t) event->area.width, (uintmax_t) event->area.height,
-              (uintmax_t) event->area.x, (uintmax_t) event->area.y,
               (uintmax_t) event->geometry.width, (uintmax_t) event->geometry.height,
               (uintmax_t) event->geometry.x, (uintmax_t) event->geometry.y);
 
