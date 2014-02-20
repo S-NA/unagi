@@ -364,6 +364,27 @@ event_handle_button_release(xcb_button_release_event_t *event)
   UNAGI_PLUGINS_EVENT_HANDLE(event, button_release, unagi_window_list_get(event->event));
 }
 
+/** Handler for MotionNotify events reported when the pointer
+ *  moves. As this event mask is not set on the Root Window because
+ *  some windows may have already grabbed the pointer (Emacs,
+ *  Firefox...), a GrabPointer request must be issued to receive them.
+ *
+ * \param event The X MotionNotify event
+ */
+static void
+event_handle_motion_notify(xcb_motion_notify_event_t *event)
+{
+  unagi_debug("detail=%ju, event=%jx, root=%jx, child=%jx, state=%jx, "
+              "root_x=%d, root_y=%d, event_x=%d, event_y=%d, same_screen=%d",
+              (uintmax_t) event->detail, (uintmax_t) event->event,
+              (uintmax_t) event->event, (uintmax_t) event->child,
+              (uintmax_t) event->state,
+              event->root_x, event->root_y, event->event_x, event->event_y,
+              event->same_screen);
+
+  UNAGI_PLUGINS_EVENT_HANDLE(event, motion_notify, NULL);
+}
+
 /** Handler for CirculateNotify events  reported when a window changes
  *  its position in the stack (either  Top if the window is now on top
  *  of all siblings or Bottom)
@@ -756,6 +777,7 @@ unagi_event_handle(xcb_generic_event_t *event)
       EVENT(XCB_KEY_PRESS, event_handle_key_press);
       EVENT(XCB_KEY_RELEASE, event_handle_key_release);
       EVENT(XCB_BUTTON_RELEASE, event_handle_button_release);
+      EVENT(XCB_MOTION_NOTIFY, event_handle_motion_notify);
       EVENT(XCB_CIRCULATE_NOTIFY, event_handle_circulate_notify);
       EVENT(XCB_CONFIGURE_NOTIFY, event_handle_configure_notify);
       EVENT(XCB_CREATE_NOTIFY, event_handle_create_notify);

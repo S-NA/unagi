@@ -67,6 +67,8 @@ typedef struct
   void (*mapping) (xcb_mapping_notify_event_t *, unagi_window_t *);
   /** ButtonRelease event */
   void (*button_release) (xcb_button_release_event_t *, unagi_window_t *);
+  /** ButtonRelease event */
+  void (*motion_notify) (xcb_motion_notify_event_t *, unagi_window_t *);
   /** CirculateNotify event */
   void (*circulate) (xcb_circulate_notify_event_t *, unagi_window_t *);
   /** ConfigureNotify event */

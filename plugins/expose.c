@@ -1359,6 +1359,7 @@ unagi_plugin_vtable_t plugin_vtable = {
     NULL,
     NULL,
     NULL,
+    NULL,
     expose_event_handle_property_notify
   },
   .check_requirements = expose_check_requirements,
