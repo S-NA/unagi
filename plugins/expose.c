@@ -980,7 +980,7 @@ _expose_enter(void)
    *  \todo improve focus handling
    */
   const xcb_grab_pointer_cookie_t grab_pointer_cookie =
-    xcb_grab_pointer_unchecked(globalconf.connection, true, globalconf.screen->root,
+    xcb_grab_pointer_unchecked(globalconf.connection, false, globalconf.screen->root,
 			       XCB_EVENT_MASK_BUTTON_RELEASE, XCB_GRAB_MODE_ASYNC,
 			       XCB_GRAB_MODE_ASYNC, XCB_NONE, XCB_NONE,
 			       XCB_CURRENT_TIME);
@@ -990,7 +990,7 @@ _expose_enter(void)
      due  to  rescaling)  due   to  the  hack  consisting  in  mapping
      previously unmapped windows to get their Pixmap */
   const xcb_grab_keyboard_cookie_t grab_keyboard_cookie =
-    xcb_grab_keyboard_unchecked(globalconf.connection, true, globalconf.screen->root,
+    xcb_grab_keyboard_unchecked(globalconf.connection, false, globalconf.screen->root,
 				XCB_CURRENT_TIME, XCB_GRAB_MODE_ASYNC,
 				XCB_GRAB_MODE_ASYNC);
 
