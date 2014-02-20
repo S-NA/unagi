@@ -690,7 +690,9 @@ unagi_window_paint_all(unagi_window_t *windows)
     {
       if(window->damaged)
         {
-          unagi_debug("Painting window %jx", (uintmax_t) window->id);
+          unagi_debug("Painting window %jx (ptr=%p), damaged_ratio=%.2f",
+                      (uintmax_t) window->id, window, window->damaged_ratio);
+
           (*globalconf.rendering->paint_window)(window);
         }
       /* When the  window has been damaged  or was damaged but  is not

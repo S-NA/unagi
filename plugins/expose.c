@@ -743,12 +743,15 @@ _expose_prepare_windows(_expose_crtc_window_slots_t *crtc_slots,
                   (intmax_t) slot->extents.x, (intmax_t) slot->extents.y,
                   (uintmax_t) slot->extents.width, (uintmax_t) slot->extents.height);
 
-      unagi_debug("scale_window: id=%jx, x=%jd, y=%jd, width=%ju, height=%ju",
+      unagi_debug("scale_window: id=%jx, x=%jd, y=%jd, width=%ju, height=%ju, "
+                  "region=%jx, original_region=%jx",
                   (uintmax_t) slot->scale_window.window->id,
                   (intmax_t) slot->scale_window.window->geometry->x,
                   (intmax_t) slot->scale_window.window->geometry->y,
                   (uintmax_t) slot->scale_window.window->geometry->width,
-                  (uintmax_t) slot->scale_window.window->geometry->height);
+                  (uintmax_t) slot->scale_window.window->geometry->height,
+                  (uintmax_t) slot->scale_window.window->region,
+                  (uintmax_t) slot->window->region);
 #endif
     }
 }
@@ -812,6 +815,8 @@ _expose_quit(void)
 
   /* Force repaint of the screen as the plugin is now disabled */
   globalconf.force_repaint = true;
+
+  unagi_debug("=> Quit");
 }
 
 static bool
@@ -1015,6 +1020,8 @@ _expose_enter(void)
   globalconf.force_repaint = true;
 
   _expose_global.entered = true;
+
+  unagi_debug("=> Entered");
   return true;
 }
 
