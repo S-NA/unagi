@@ -82,10 +82,12 @@
 #define _PLUGIN_NAME "expose"
 #define _DBUS_NAME UNAGI_DBUS_NAME_PLUGIN_PREFIX _PLUGIN_NAME
 
+#define EXPOSE_NON_FOCUSED_WINDOW_OPACITY \
+  ((uint16_t) (((double) 0.75 * 0xffffffff) / 0xffff))
+
 /** Activation Keysym
  * \todo Should be in configuration file
  */
-#define PLUGIN_NON_FOCUSED_WINDOW_OPACITY ((double) 0.95)
 #define EXPOSE_KEY_CRTC_CYCLE XK_Tab
 #define EXPOSE_KEY_WINDOW_UP XK_Up
 #define EXPOSE_KEY_WINDOW_PREV XK_Left
@@ -1292,8 +1294,7 @@ expose_render_windows(void)
          _expose_global.current_slot->scale_window.window == window)
         window->transform_opacity = UINT16_MAX;
       else
-        window->transform_opacity = (uint16_t)
-          (((double) PLUGIN_NON_FOCUSED_WINDOW_OPACITY * 0xffffffff) / 0xffff);
+        window->transform_opacity = EXPOSE_NON_FOCUSED_WINDOW_OPACITY;
 
       window->damaged = true;
     }
