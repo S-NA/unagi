@@ -365,5 +365,7 @@ unagi_plugin_vtable_t plugin_vtable = {
   .check_requirements = NULL,
   .window_manage_existing = opacity_window_manage_existing,
   .window_get_opacity = opacity_get_window_opacity,
-  .render_windows = NULL
+  .pre_paint = NULL,
+  .render_windows = NULL,
+  .post_paint = NULL
 };

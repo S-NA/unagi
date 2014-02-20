@@ -102,8 +102,15 @@ typedef struct
   void (*window_manage_existing)(const int, unagi_window_t **);
   /** Hook to get the opacity of the given window */
   uint16_t (*window_get_opacity)(const unagi_window_t *);
+  /** Hook before even considering if a repaint will be done (if not
+      forced, then it is done if the damaged Region is not empty), so
+      plugins can add/remove Region from the damaged Region and thus
+      trigger/untrigger repaint at their convenience */
+  void (*pre_paint)(void);
   /** Hook to allow plugins to provide their own windows */
   unagi_window_t *(*render_windows)(void);
+  /** Hook after repainting all windows */
+  void (*post_paint)(void);
 } unagi_plugin_vtable_t;
 
 /** Plugin list element */

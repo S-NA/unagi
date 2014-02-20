@@ -266,6 +266,10 @@ _unagi_paint_callback(EV_P_ ev_timer *w, int revents)
   static double paint_time_variance_sum = 0;
 #endif
 
+  for(unagi_plugin_t *plugin = globalconf.plugins; plugin; plugin = plugin->next)
+    if(plugin->enable && plugin->vtable->pre_paint)
+      (*plugin->vtable->pre_paint)();
+
   /* Now paint the windows */
   if(globalconf.damaged || globalconf.force_repaint)
     {
@@ -326,6 +330,10 @@ _unagi_paint_callback(EV_P_ ev_timer *w, int revents)
         globalconf.repaint_interval = globalconf.refresh_rate_interval;
       else
         globalconf.repaint_interval = current_interval;
+
+      for(unagi_plugin_t *plugin = globalconf.plugins; plugin; plugin = plugin->next)
+        if(plugin->enable && plugin->vtable->post_paint)
+          (*plugin->vtable->post_paint)();
 
       /* Rearm the paint timer watcher */
       globalconf.event_paint_timer_watcher.repeat = globalconf.repaint_interval;

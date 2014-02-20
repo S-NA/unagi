@@ -1373,5 +1373,7 @@ unagi_plugin_vtable_t plugin_vtable = {
   .check_requirements = expose_check_requirements,
   .window_manage_existing = NULL,
   .window_get_opacity = NULL,
-  .render_windows = expose_render_windows
+  .pre_paint = NULL,
+  .render_windows = expose_render_windows,
+  .post_paint = NULL
 };
