@@ -413,6 +413,7 @@ unagi_window_get_invisible_window_pixmap(unagi_window_t *window)
     window_set_override_redirect(window, true);
 
   xcb_map_window(globalconf.connection, window->id);
+  xcb_flush(globalconf.connection);
 }
 
 /** This  function must  be called  on  each window  object which  was
@@ -426,6 +427,7 @@ unagi_window_get_invisible_window_pixmap_finalise(unagi_window_t *window)
 {
   window_set_override_redirect(window, false);
   xcb_unmap_window(globalconf.connection, window->id);
+  xcb_flush(globalconf.connection);
 }
 
 typedef struct
@@ -618,6 +620,7 @@ unagi_window_map_raised(const unagi_window_t *window)
                        &value);
 
   xcb_map_window(globalconf.connection, window->id);
+  xcb_flush(globalconf.connection);
 }
 
 /** Restack  the given  window object  by placing  it below  the given

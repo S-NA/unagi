@@ -272,6 +272,8 @@ unagi_display_register_cm(void)
 		      globalconf.cm_window, globalconf.ewmh._NET_WM_NAME,
                       globalconf.ewmh.UTF8_STRING, 8,
 		      sizeof(PACKAGE_NAME), PACKAGE_NAME);
+
+  xcb_flush(globalconf.connection);
 }
 
 /** Finish  acquiring  ownership  by  checking  whether  the  SetOwner
