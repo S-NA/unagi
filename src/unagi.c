@@ -303,23 +303,50 @@ _unagi_paint_callback(EV_P_ ev_timer *w, int revents)
         unagi_display_reset_damaged();
 
       const float paint_time = (float) (ev_time() - ev_now(globalconf.event_loop));
-      globalconf.paint_time_sum += paint_time;
 
-      const float current_average = globalconf.paint_time_sum /
-        (float) ++globalconf.paint_counter;
+      if(!globalconf.force_repaint)
+        {
+          globalconf.paint_time_sum += paint_time;
 
-      /* The next repaint  interval is computed from  the refresh rate
-         interval and repaint global average time */
-      const float current_interval = globalconf.refresh_rate_interval -
-        current_average;
+          const float current_average = globalconf.paint_time_sum /
+            (float) ++globalconf.paint_counter;
 
-      /* When repainting the whole screen, the painting may have taken
-         a  long time  but the  next repaint  should not  be too  soon
-         neither */
-      if(current_interval < UNAGI_MINIMUM_REPAINT_INTERVAL)
-        globalconf.repaint_interval = globalconf.refresh_rate_interval;
+          /* The next repaint  interval is computed from  the refresh rate
+             interval and repaint global average time */
+          const float current_interval = globalconf.refresh_rate_interval -
+            current_average;
+
+          /* When repainting the whole screen, the painting may have taken
+             a  long time  but the  next repaint  should not  be too  soon
+             neither */
+          if(current_interval < UNAGI_MINIMUM_REPAINT_INTERVAL)
+            globalconf.repaint_interval = globalconf.refresh_rate_interval;
+          else
+            globalconf.repaint_interval = current_interval;
+
+#ifdef __DEBUG__
+          /* Compute standard deviation for this iteration */
+          if(paint_time < paint_time_min)
+            paint_time_min = paint_time;
+          if(paint_time > paint_time_max)
+            paint_time_max = paint_time;
+
+          const double delta = paint_time - paint_time_mean;
+          paint_time_mean += (double) delta / globalconf.paint_counter;
+          paint_time_variance_sum += delta * (paint_time - paint_time_mean);
+
+          unagi_debug("Painting time in seconds (#%u): %.6f, min=%.6f, max=%.6f, "
+                      "average=%.6f (+/- %.6Lf)",
+                      globalconf.paint_counter, paint_time, paint_time_min,
+                      paint_time_max, current_average,
+                      sqrtl(paint_time_variance_sum / globalconf.paint_counter));
+        }
       else
-        globalconf.repaint_interval = current_interval;
+        {
+          unagi_debug("FORCED repainting time in seconds (#%u): %.6f",
+                      globalconf.paint_counter + 1, paint_time);
+#endif /* __DEBUG__ */
+        }
 
       for(unagi_plugin_t *plugin = globalconf.plugins; plugin; plugin = plugin->next)
         if(plugin->enable && plugin->vtable->post_paint)
@@ -328,24 +355,6 @@ _unagi_paint_callback(EV_P_ ev_timer *w, int revents)
       /* Rearm the paint timer watcher */
       globalconf.event_paint_timer_watcher.repeat = globalconf.repaint_interval;
       ev_timer_again(globalconf.event_loop, &globalconf.event_paint_timer_watcher);
-
-#ifdef __DEBUG__
-      if(paint_time < paint_time_min)
-        paint_time_min = paint_time;
-      if(paint_time > paint_time_max)
-        paint_time_max = paint_time;
-
-      /* Compute standard deviation for this iteration */
-      const double delta = paint_time - paint_time_mean;
-      paint_time_mean += (double) delta / globalconf.paint_counter;
-      paint_time_variance_sum += delta * (paint_time - paint_time_mean);
-
-      unagi_debug("Painting time in seconds (#%u): %.6f, min=%.6f, max=%.6f, "
-                  "average=%.6f (+/- %.6Lf)",
-                  globalconf.paint_counter, paint_time, paint_time_min,
-                  paint_time_max, current_average,
-                  sqrtl(paint_time_variance_sum / globalconf.paint_counter));
-#endif /* __DEBUG__ */
 
       /* Some events may have been queued while calling this callback,
          so make sure by calling this watcher again */
