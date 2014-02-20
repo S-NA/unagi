@@ -661,10 +661,11 @@ _expose_assign_windows_to_slots(_expose_crtc_window_slots_t *crtc_slots)
  *  pixels in it from the original window
  *
  * \param slots The windows slots
+ * \param scale_window_prev The last window of the previous CRTC
  */
 static void
 _expose_prepare_windows(_expose_crtc_window_slots_t *crtc_slots,
-                        unagi_window_t *scale_window_prev)
+                        unagi_window_t **scale_window_prev)
 {
   _expose_window_slot_t *slot;
   for(unsigned int i = 0; i < crtc_slots->nwindows; i++)
@@ -734,10 +735,10 @@ _expose_prepare_windows(_expose_crtc_window_slots_t *crtc_slots,
       scale_window->damaged = true;
 
       /* Link the previous element with the current one */
-      if(scale_window_prev)
-	scale_window_prev->next = scale_window;
+      if(*scale_window_prev)
+	(*scale_window_prev)->next = scale_window;
 
-      scale_window_prev = scale_window;
+      *scale_window_prev = scale_window;
       slot->scale_window.window = scale_window;
 
 #ifdef __DEBUG__
@@ -1007,8 +1008,7 @@ _expose_enter(void)
   for(unsigned int i = 0; i < globalconf.crtc_len; i++)
     {
       _expose_crtc_window_slots_t *crtc_slots = _expose_global.crtc_slots + i;
-      _expose_prepare_windows(crtc_slots, prev_window);
-      prev_window = crtc_slots->slots[crtc_slots->nwindows - 1].scale_window.window;
+      _expose_prepare_windows(crtc_slots, &prev_window);
     }
 
   if(!_expose_grab_finalize(&grab_pointer_cookie, &grab_keyboard_cookie))
