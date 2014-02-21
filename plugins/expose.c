@@ -1006,19 +1006,14 @@ _expose_enter(void)
         }
     }
 
-  /** Process MapNotify event to get the NameWindowPixmap
-   *  \todo get only MapNotify? */
-  xcb_aux_sync(globalconf.connection);
-  
-  unagi_event_handle_poll_loop(unagi_event_handle);
+  /* Reset Pointer position (MotionNotify are only received once
+     entering Expose) and before GrabPointer to avoid race
+     condition */
+  _expose_global.pointer_x = -1;
+  _expose_global.pointer_y = -1;
 
-  xcb_ungrab_server(globalconf.connection);
-
-  /** Grab the pointer in an  active way to avoid EnterNotify event due
-   *  to the mapping hack
-   *
-   *  \todo improve focus handling
-   */
+  /* Grab the pointer in an active way to avoid EnterNotify event due
+   * to the mapping hack */
   const xcb_grab_pointer_cookie_t grab_pointer_cookie =
     xcb_grab_pointer_unchecked(globalconf.connection,
                                false,
@@ -1030,6 +1025,14 @@ _expose_enter(void)
                                globalconf.screen->root,
                                XCB_NONE,
                                XCB_CURRENT_TIME);
+
+  /** Process MapNotify event to get the NameWindowPixmap
+   *  \todo get only MapNotify? */
+  xcb_aux_sync(globalconf.connection);
+
+  unagi_event_handle_poll_loop(unagi_event_handle);
+
+  xcb_ungrab_server(globalconf.connection);
 
   /* Grab  the keyboard  in an  active way  to avoid  "weird" behavior
      (e.g. being  able to type in  a window which may  be not selected
@@ -1351,10 +1354,32 @@ expose_event_handle_property_notify(xcb_property_notify_event_t *event,
 static void
 expose_pre_paint(void)
 {
-  if(!_expose_global.entered ||
-     _expose_coordinates_within_slot(_expose_global.current_slot,
-                                     _expose_global.pointer_x,
-                                     _expose_global.pointer_y))
+  if(!_expose_global.entered)
+    return;
+
+  /* This only happens when just entering Expose as GrabPointer is
+     issued at that time */
+  if(_expose_global.pointer_x == -1 || _expose_global.pointer_y == -1)
+    {
+      xcb_query_pointer_reply_t *query_pointer_reply =
+        xcb_query_pointer_reply(globalconf.connection,
+                                xcb_query_pointer_unchecked(globalconf.connection,
+                                                            globalconf.screen->root),
+                                NULL);
+
+      if(!query_pointer_reply)
+        {
+          unagi_warn("Cannot get the current Mouse position");
+          return;
+        }
+
+      _expose_global.pointer_x = query_pointer_reply->root_x;
+      _expose_global.pointer_y = query_pointer_reply->root_y;
+      free(query_pointer_reply);
+    }
+  else if(_expose_coordinates_within_slot(_expose_global.current_slot,
+                                          _expose_global.pointer_x,
+                                          _expose_global.pointer_y))
     return;
 
   _expose_update_current_crtc_and_slot(_expose_global.pointer_x,
