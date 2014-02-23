@@ -494,8 +494,17 @@ window_add_requests_finalise(unagi_window_t * const window,
          received and handled needlessly, whereas with DamageReportNonEmpty
          level only a single event specifying the full window region is sent
          thus this is not efficient for small damage regions */
-      xcb_damage_create(globalconf.connection, window->damage, window->id,
-			XCB_DAMAGE_REPORT_LEVEL_DELTA_RECTANGLES);
+      xcb_generic_error_t *error;
+      if((error = xcb_request_check(globalconf.connection,
+                                    xcb_damage_create_checked(globalconf.connection,
+                                                              window->damage,
+                                                              window->id,
+                                                              XCB_DAMAGE_REPORT_LEVEL_DELTA_RECTANGLES))))
+        {
+          free(error);
+          unagi_debug("DamageCreate failed for window %jx", (uintmax_t) window->id);
+          return false;
+        }
     }
 
   if(window_add_cookies.geometry.sequence)
