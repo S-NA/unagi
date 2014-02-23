@@ -548,13 +548,6 @@ event_handle_create_notify(xcb_create_notify_event_t *event)
   new_window->geometry->height = event->height;
   new_window->geometry->border_width = event->border_width;
 
-  if(unagi_window_is_visible(new_window))
-    /* Create and store the region associated with the window to avoid
-       creating regions all the time, this Region will be destroyed
-       only upon DestroyNotify or re-created upon ConfigureNotify
-    */
-    new_window->region = unagi_window_get_region(new_window, true, true);
-
   UNAGI_PLUGINS_EVENT_HANDLE(event, create, new_window);
 }
 
@@ -607,6 +600,10 @@ event_handle_map_notify(xcb_map_notify_event_t *event)
 
   if(unagi_window_is_visible(window))
     {
+      /* Create and store the region associated with the window to
+         avoid creating regions all the time, this Region will be
+         destroyed only upon DestroyNotify or re-created upon
+         ConfigureNotify */
       window->region = unagi_window_get_region(window, true, true);
 
       /* Everytime a window is mapped, a new pixmap is created */

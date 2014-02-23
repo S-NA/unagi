@@ -368,7 +368,9 @@ unagi_window_get_region(unagi_window_t *window, bool screen_relative, bool check
 bool
 unagi_window_is_visible(const unagi_window_t *window)
 {
-  return (window->geometry &&
+  return (window->attributes &&
+          window->attributes->map_state == XCB_MAP_STATE_VIEWABLE &&
+          window->geometry &&
 	  window->geometry->x + window->geometry->width >= 1 &&
 	  window->geometry->y + window->geometry->height >= 1 &&
 	  window->geometry->x < globalconf.screen->width_in_pixels &&
@@ -403,10 +405,6 @@ window_set_override_redirect(const unagi_window_t *window,
 void
 unagi_window_get_invisible_window_pixmap(unagi_window_t *window)
 {
-  if(!unagi_window_is_visible(window) || !window->attributes ||
-     window->attributes->map_state == XCB_MAP_STATE_VIEWABLE)
-    return;
-
   unagi_debug("Getting Pixmap of invisible window %jx", (uintmax_t) window->id);
 
   if(!window->attributes->override_redirect)
@@ -558,8 +556,7 @@ unagi_window_manage_existing(const int nwindows,
       /* The opacity  property is only  meaningful when the  window is
 	 mapped, because when the window is unmapped, we don't receive
 	 PropertyNotify */
-      if(new_windows[nwindow]->attributes->map_state == XCB_MAP_STATE_VIEWABLE &&
-         unagi_window_is_visible(new_windows[nwindow]))
+      if(unagi_window_is_visible(new_windows[nwindow]))
 	{
 	  unagi_window_register_notify(new_windows[nwindow]);
 	  new_windows[nwindow]->pixmap = unagi_window_get_pixmap(new_windows[nwindow]);
@@ -691,6 +688,12 @@ unagi_window_paint_all(unagi_window_t *windows)
 
   for(unagi_window_t *window = windows; window; window = window->next)
     {
+      if(globalconf.force_repaint && unagi_window_is_visible(window))
+        {
+          window->damaged = true;
+          window->damaged_ratio = 1.0;
+        }
+
       if(window->damaged)
         {
           unagi_debug("Painting window %jx (ptr=%p), damaged_ratio=%.2f",

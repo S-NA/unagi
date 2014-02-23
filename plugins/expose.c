@@ -740,9 +740,6 @@ _expose_prepare_windows(_expose_crtc_window_slots_t *crtc_slots,
       scale_window->geometry->y = slot->extents.y +
         (slot->extents.height - scale_window->geometry->height) / 2;
 
-      scale_window->damaged = true;
-      scale_window->damaged_ratio = 1.0;
-
       /* Consider the window non-focused, actually handle later by
          expose_pre_paint() */
       scale_window->transform_opacity = EXPOSE_NON_FOCUSED_WINDOW_OPACITY;
