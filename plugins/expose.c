@@ -1066,21 +1066,22 @@ expose_event_handle_key_release(xcb_key_release_event_t *event,
   switch(unagi_key_getkeysym(event->detail, event->state))
     {
     case EXPOSE_KEY_CRTC_CYCLE:
-      {
-        unsigned int crtc_i;
-        for(crtc_i = 0; crtc_i < globalconf.crtc_len; crtc_i++)
-          if(event->root_x >= globalconf.crtc[crtc_i]->x &&
-             event->root_x <= (globalconf.crtc[crtc_i]->x +
-                               globalconf.crtc[crtc_i]->width) &&
-             event->root_y >= globalconf.crtc[crtc_i]->y &&
-             event->root_y <= (globalconf.crtc[crtc_i]->y +
-                               globalconf.crtc[crtc_i]->height))
-            break;
+      if(globalconf.crtc_len > 1)
+        {
+          unsigned int crtc_i;
+          for(crtc_i = 0; crtc_i < globalconf.crtc_len; crtc_i++)
+            if(event->root_x >= globalconf.crtc[crtc_i]->x &&
+               event->root_x <= (globalconf.crtc[crtc_i]->x +
+                                 globalconf.crtc[crtc_i]->width) &&
+               event->root_y >= globalconf.crtc[crtc_i]->y &&
+               event->root_y <= (globalconf.crtc[crtc_i]->y +
+                                 globalconf.crtc[crtc_i]->height))
+              break;
 
-        // Move the pointer to the middle of the first window of the screen
-        crtc_i = (crtc_i >= (globalconf.crtc_len - 1)) ? 0 : crtc_i + 1;
-        _expose_pointer_move_center(
-          _expose_global.crtc_slots[crtc_i].slots[0].scale_window.window);
+          // Move the pointer to the middle of the first window of the screen
+          crtc_i = (crtc_i >= (globalconf.crtc_len - 1)) ? 0 : crtc_i + 1;
+          _expose_pointer_move_center(
+            _expose_global.crtc_slots[crtc_i].slots[0].scale_window.window);
       }
 
       break;
