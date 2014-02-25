@@ -327,7 +327,8 @@ event_handle_randr_screen_change_notify(xcb_randr_screen_change_notify_event_t *
   UNAGI_PLUGINS_EVENT_HANDLE(event, randr_screen_change_notify, NULL);
 }
 
-/** Handler for KeyPress events reported once a key is pressed
+/** Handler for KeyPress events reported once a key is pressed. Only
+ *  handle when GrabKeyBoard has been issued beforehand.
  *
  * \param event The X KeyPress event
  */
@@ -341,7 +342,8 @@ event_handle_key_press(xcb_key_press_event_t *event)
   UNAGI_PLUGINS_EVENT_HANDLE(event, key_press, unagi_window_list_get(event->event));
 }
 
-/** Handler for KeyRelease events reported once a key is released
+/** Handler for KeyRelease events reported once a key is released. Only
+ *  handle when GrabKeyBoard has been issued beforehand.
  *
  * \param event The X KeyRelease event
  */
@@ -355,6 +357,9 @@ event_handle_key_release(xcb_key_release_event_t *event)
   UNAGI_PLUGINS_EVENT_HANDLE(event, key_release, unagi_window_list_get(event->event));
 }
 
+/** Handler for ButtonRelease events reported once a pointer button is
+ *  released. Only handle when GrabPointer has been issued beforehand.
+ */
 static void
 event_handle_button_release(xcb_button_release_event_t *event)
 {

@@ -312,9 +312,6 @@ unagi_display_init_redirect(void)
 
   /* Declare interest in meaningful events */
   const uint32_t select_input_val =
-    XCB_EVENT_MASK_KEY_PRESS |
-    XCB_EVENT_MASK_KEY_RELEASE |
-    XCB_EVENT_MASK_BUTTON_RELEASE |
     XCB_EVENT_MASK_SUBSTRUCTURE_NOTIFY |
     XCB_EVENT_MASK_STRUCTURE_NOTIFY |
     XCB_EVENT_MASK_PROPERTY_CHANGE;
