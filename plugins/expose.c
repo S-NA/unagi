@@ -93,7 +93,7 @@
 #define EXPOSE_KEY_WINDOW_PREV XK_Left
 #define EXPOSE_KEY_WINDOW_NEXT XK_Right
 #define EXPOSE_KEY_WINDOW_DOWN XK_Down
-#define EXPOSE_KEY_WINDOW_SELECT XK_s
+#define EXPOSE_KEY_WINDOW_SELECT XK_Return
 #define EXPOSE_KEY_QUIT XK_Escape
 
 /** Spacing between thumbnails

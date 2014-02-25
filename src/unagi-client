@@ -19,6 +19,16 @@ fi
 DBUS_NAME=org.minidweeb.unagi
 DBUS_OBJECT_PATH=/org/minidweeb/unagi
 
+# Required to avoid race condition with KeyRelease event. For example, if
+# 'Return' key is set to select a Window within Expose:
+#
+#  1. Type this command in a terminal
+#  2. Press Return key.
+#  3. If the KeyRelease X Event is received by Unagi *after* entering Expose
+#     (issuing GrabKeyboard), then this will select the current Window and
+#     exit Expose
+sleep 0.1
+
 OUTPUT=$(dbus-send --session --type=method_call --print-reply --dest="$DBUS_NAME" \
     "${DBUS_OBJECT_PATH}" "${DBUS_NAME}.$1")
 
