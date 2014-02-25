@@ -147,26 +147,6 @@ typedef struct
   _expose_window_slot_t *slots;
 } _expose_crtc_window_slots_t;
 
-typedef struct
-{
-  const char *name;
-  xcb_keycode_t keycode;
-  xcb_keysym_t keysym;
-  xcb_void_cookie_t grab_cookie;
-  bool grab_success;
-} _expose_key_t;
-
-typedef struct
-{
-  _expose_key_t crtc_cycle;
-  _expose_key_t window_up;
-  _expose_key_t window_left;
-  _expose_key_t window_right;
-  _expose_key_t window_down;
-  _expose_key_t window_select;
-  _expose_key_t quit;
-} _expose_keys_t;
-
 /** Global variables of this plugin */
 static struct
 {
@@ -179,8 +159,6 @@ static struct
   /** Current CRTC and Slot (Window) */
   _expose_crtc_window_slots_t *current_crtc;
   _expose_window_slot_t *current_slot;
-  /** Keyboards keys handled by this plugin */
-  _expose_keys_t keys;
   /** Global windows list context before Expose overrides it while running */
   unagi_window_t *windows_head_before_enter;
   unagi_window_t *windows_tail_before_enter;
@@ -190,52 +168,7 @@ static struct
   int16_t pointer_y;
 } _expose_global;
 
-#define GRAB_KEY(key_name)                                              \
-  _expose_global.keys.key_name.grab_cookie =                            \
-    xcb_grab_key_checked(globalconf.connection,                         \
-                         false,                                         \
-                         globalconf.screen->root,                       \
-                         XCB_NONE,                                      \
-                         _expose_get_keycode(&_expose_global.keys.key_name), \
-                         XCB_GRAB_MODE_ASYNC,                           \
-                         XCB_GRAB_MODE_ASYNC)
-
-#define GRAB_KEY_FINALIZE(key_name)                                            \
-  {                                                                            \
-    xcb_generic_error_t *error;                                                \
-    _expose_global.keys.key_name.grab_success = true;                          \
-    if((error = xcb_request_check(globalconf.connection,                       \
-                                  _expose_global.keys.key_name.grab_cookie)))  \
-      {                                                                        \
-        unagi_warn("Cannot grab '%s' key", _expose_global.keys.key_name.name); \
-        free(error);                                                           \
-        _expose_global.keys.key_name.grab_success = false;                     \
-      }                                                                        \
-    }
-
-#define UNGRAB_KEY(key_name)                                            \
-  if(_expose_global.keys.key_name.grab_success)                         \
-    xcb_ungrab_key(globalconf.connection,                               \
-                   _expose_get_keycode(&_expose_global.keys.key_name),  \
-                   globalconf.screen->root,                             \
-                   XCB_NONE)
-
 extern unagi_plugin_vtable_t plugin_vtable;
-
-static inline xcb_keycode_t
-_expose_get_keycode(_expose_key_t *key)
-{
-  if(!key->keycode)
-    {
-      xcb_keycode_t *keycode = xcb_key_symbols_get_keycode(globalconf.keysyms,
-                                                           key->keysym);
-
-      key->keycode = *keycode;
-      free(keycode);
-    }
-
-  return key->keycode;
-}
 
 static inline void
 _expose_pointer_move_center(const unagi_window_t *window)
@@ -312,23 +245,6 @@ expose_constructor(void)
   _expose_global.atoms.current_desktop_cookie =
     xcb_ewmh_get_current_desktop_unchecked(&globalconf.ewmh,
                                            globalconf.screen_nbr);
-
-  _expose_global.keys.crtc_cycle.name = "tab";
-  _expose_global.keys.crtc_cycle.keysym = EXPOSE_KEY_CRTC_CYCLE;
-
-  _expose_global.keys.window_up.name = "up";
-  _expose_global.keys.window_up.keysym = EXPOSE_KEY_WINDOW_UP;
-  _expose_global.keys.window_left.name = "left";
-  _expose_global.keys.window_left.keysym = EXPOSE_KEY_WINDOW_PREV;
-  _expose_global.keys.window_right.name = "right";
-  _expose_global.keys.window_right.keysym = EXPOSE_KEY_WINDOW_NEXT;
-  _expose_global.keys.window_down.name = "down";
-  _expose_global.keys.window_down.keysym = EXPOSE_KEY_WINDOW_DOWN;
-  _expose_global.keys.window_select.name = "return";
-  _expose_global.keys.window_select.keysym = EXPOSE_KEY_WINDOW_SELECT;
-
-  _expose_global.keys.quit.name = "escape";
-  _expose_global.keys.quit.keysym = EXPOSE_KEY_QUIT;
 }
 
 /** Update    the     values    of     _NET_CLIENT_LIST    (required),
@@ -840,16 +756,6 @@ _expose_quit(void)
   xcb_ungrab_pointer(globalconf.connection, XCB_CURRENT_TIME);
   xcb_ungrab_keyboard(globalconf.connection, XCB_CURRENT_TIME);
 
-  if(globalconf.crtc_len > 1)
-    UNGRAB_KEY(crtc_cycle);
-
-  UNGRAB_KEY(window_up);
-  UNGRAB_KEY(window_left);
-  UNGRAB_KEY(window_right);
-  UNGRAB_KEY(window_down);
-  UNGRAB_KEY(window_select);
-  UNGRAB_KEY(quit);
-
   _expose_free_memory();
   _expose_global.entered = false;
 
@@ -887,35 +793,14 @@ _expose_grab_finalize(const xcb_grab_pointer_cookie_t *grab_pointer_cookie,
 
   free(grab_keyboard_reply);
 
-  if(globalconf.crtc_len > 1)
-    GRAB_KEY_FINALIZE(crtc_cycle);
-
-  GRAB_KEY_FINALIZE(window_up);
-  GRAB_KEY_FINALIZE(window_left);
-  GRAB_KEY_FINALIZE(window_right);
-  GRAB_KEY_FINALIZE(window_down);
-  GRAB_KEY_FINALIZE(window_select);
-  GRAB_KEY_FINALIZE(quit);
-  
   if(!grab_pointer_success ||
-     !grab_keyboard_success ||
-     !_expose_global.keys.quit.grab_success)
+     !grab_keyboard_success)
     {
       if(grab_pointer_success)
         xcb_ungrab_pointer(globalconf.connection, XCB_CURRENT_TIME);
 
       if(grab_keyboard_success)
         xcb_ungrab_keyboard(globalconf.connection, XCB_CURRENT_TIME);
-
-      if(globalconf.crtc_len > 1)
-        UNGRAB_KEY(crtc_cycle);
-
-      UNGRAB_KEY(window_up);
-      UNGRAB_KEY(window_left);
-      UNGRAB_KEY(window_right);
-      UNGRAB_KEY(window_down);
-      UNGRAB_KEY(window_select);
-      UNGRAB_KEY(quit);
 
       return false;
     }
@@ -1039,16 +924,6 @@ _expose_enter(void)
     xcb_grab_keyboard_unchecked(globalconf.connection, false, globalconf.screen->root,
 				XCB_CURRENT_TIME, XCB_GRAB_MODE_ASYNC,
 				XCB_GRAB_MODE_ASYNC);
-
-  if(globalconf.crtc_len > 1)
-    GRAB_KEY(crtc_cycle);
-
-  GRAB_KEY(window_up);
-  GRAB_KEY(window_left);
-  GRAB_KEY(window_right);
-  GRAB_KEY(window_down);
-  GRAB_KEY(window_select);
-  GRAB_KEY(quit);
 
   _expose_global.windows_itree_before_enter = globalconf.windows_itree;
   globalconf.windows_itree = util_itree_new();
@@ -1239,19 +1114,6 @@ expose_event_handle_key_release(xcb_key_release_event_t *event,
     default:
       break;
     }
-}
-
-static void
-expose_event_handle_mapping_notify(xcb_mapping_notify_event_t *e __attribute__((unused)),
-                                   unagi_window_t *w __attribute__((unused)))
-{
-  _expose_global.keys.crtc_cycle.keycode = 0;
-  _expose_global.keys.window_up.keycode = 0;
-  _expose_global.keys.window_left.keycode = 0;
-  _expose_global.keys.window_right.keycode = 0;
-  _expose_global.keys.window_down.keycode = 0;
-  _expose_global.keys.window_select.keycode = 0;
-  _expose_global.keys.quit.keycode = 0;
 }
 
 /** Check whether the given window is within the given coordinates
@@ -1482,7 +1344,7 @@ unagi_plugin_vtable_t plugin_vtable = {
     NULL,
     NULL,
     expose_event_handle_key_release,
-    expose_event_handle_mapping_notify,
+    NULL,
     expose_event_handle_button_release,
     expose_event_handle_motion_notify,
     NULL,
