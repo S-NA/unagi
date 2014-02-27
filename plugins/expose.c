@@ -62,6 +62,7 @@
 #include <math.h>
 #include <string.h>
 #include <stdlib.h>
+#include <time.h>
 
 #include <xcb/xcb.h>
 #include <xcb/xcb_ewmh.h>
@@ -895,42 +896,78 @@ _expose_quit(void)
 }
 
 static bool
-_expose_grab_finalize(const xcb_grab_pointer_cookie_t *grab_pointer_cookie,
-                      const xcb_grab_keyboard_cookie_t *grab_keyboard_cookie)
+_expose_grab(void)
 {
-  xcb_grab_pointer_reply_t *grab_pointer_reply =
-    xcb_grab_pointer_reply(globalconf.connection, *grab_pointer_cookie, NULL);
+  bool grab_success = false;
 
-  bool grab_pointer_success = true;
-  if(!grab_pointer_reply || grab_pointer_reply->status != XCB_GRAB_STATUS_SUCCESS)
+  /* If the grab fails, wait for 1ms before trying again */
+  const struct timespec sleep_before_retry = {.tv_sec = 0,
+                                              .tv_nsec = 1000000};
+
+  for(unsigned int i = 0; i < 1000; i++)
     {
-      unagi_warn("Cannot grab pointer");
-      grab_pointer_success = false;
+      xcb_grab_pointer_reply_t *reply =
+        xcb_grab_pointer_reply(globalconf.connection,
+                               xcb_grab_pointer_unchecked(globalconf.connection,
+                                                          false,
+                                                          globalconf.screen->root,
+                                                          XCB_EVENT_MASK_BUTTON_RELEASE |
+                                                          XCB_EVENT_MASK_POINTER_MOTION,
+                                                          XCB_GRAB_MODE_ASYNC,
+                                                          XCB_GRAB_MODE_ASYNC,
+                                                          globalconf.screen->root,
+                                                          XCB_NONE,
+                                                          XCB_CURRENT_TIME),
+                               NULL);
+
+      if(reply && reply->status == XCB_GRAB_STATUS_SUCCESS)
+        {
+          grab_success = true;
+          free(reply);
+          break;
+        }
+
+      free(reply);
+      nanosleep(&sleep_before_retry, NULL);
     }
 
-  free(grab_pointer_reply);
-
-  xcb_grab_keyboard_reply_t *grab_keyboard_reply =
-    xcb_grab_keyboard_reply(globalconf.connection, *grab_keyboard_cookie, NULL);
-
-  bool grab_keyboard_success = true;
-  if(!grab_keyboard_reply || grab_keyboard_reply->status != XCB_GRAB_STATUS_SUCCESS)
+  if(!grab_success)
     {
+      unagi_warn("Cannot grab mouse/pointer");
+      return false;
+    }
+
+  for(unsigned int i = 0; i < 1000; i++)
+    {
+      /* Grab the keyboard in an active way to avoid "weird" behavior
+         (e.g. being able to type in a window which may be not
+         selected due to rescaling) due to the hack consisting in
+         mapping previously unmapped windows to get their Pixmap */
+      xcb_grab_keyboard_reply_t *reply =
+        xcb_grab_keyboard_reply(globalconf.connection,
+                                xcb_grab_keyboard_unchecked(globalconf.connection,
+                                                            false,
+                                                            globalconf.screen->root,
+                                                            XCB_CURRENT_TIME,
+                                                            XCB_GRAB_MODE_ASYNC,
+                                                            XCB_GRAB_MODE_ASYNC),
+                                NULL);
+
+      if(reply && reply->status == XCB_GRAB_STATUS_SUCCESS)
+        {
+          grab_success = true;
+          free(reply);
+          break;
+        }
+
+      free(reply);
+      nanosleep(&sleep_before_retry, NULL);
+    }
+
+  if(!grab_success)
+    {
+      xcb_ungrab_pointer(globalconf.connection, XCB_CURRENT_TIME);
       unagi_warn("Cannot grab keyboard");
-      grab_keyboard_success = false;
-    }
-
-  free(grab_keyboard_reply);
-
-  if(!grab_pointer_success ||
-     !grab_keyboard_success)
-    {
-      if(grab_pointer_success)
-        xcb_ungrab_pointer(globalconf.connection, XCB_CURRENT_TIME);
-
-      if(grab_keyboard_success)
-        xcb_ungrab_keyboard(globalconf.connection, XCB_CURRENT_TIME);
-
       return false;
     }
 
@@ -981,6 +1018,21 @@ _expose_enter(void)
       return false;
     }
 
+  xcb_grab_server(globalconf.connection);
+
+  /* Reset Pointer position (MotionNotify are only received once
+     entering Expose) and before GrabPointer to avoid race
+     condition */
+  _expose_global.pointer.x = -1;
+  _expose_global.pointer.y = -1;
+  if(!_expose_grab())
+    {
+      xcb_ungrab_server(globalconf.connection);
+      xcb_flush(globalconf.connection);
+      unagi_warn("Plugin cannot be enabled: see the messages above");
+      return false;
+    }
+
   _expose_global.crtc_slots = calloc(globalconf.crtc_len,
                                      sizeof(_expose_crtc_window_slots_t));
 
@@ -993,8 +1045,6 @@ _expose_enter(void)
 
   for(uint32_t i = 0; i < nwindows; i++)
     _expose_crtc_assign_window(unagi_window_list_get(_expose_global.atoms.client_list->windows[i]));
-
-  xcb_grab_server(globalconf.connection);
 
   for(unsigned int crtc_n = 0; crtc_n < globalconf.crtc_len; crtc_n++)
     {
@@ -1017,42 +1067,13 @@ _expose_enter(void)
         }
     }
 
-  /* Reset Pointer position (MotionNotify are only received once
-     entering Expose) and before GrabPointer to avoid race
-     condition */
-  _expose_global.pointer.x = -1;
-  _expose_global.pointer.y = -1;
-
-  /* Grab the pointer in an active way to avoid EnterNotify event due
-   * to the mapping hack */
-  const xcb_grab_pointer_cookie_t grab_pointer_cookie =
-    xcb_grab_pointer_unchecked(globalconf.connection,
-                               false,
-                               globalconf.screen->root,
-                               XCB_EVENT_MASK_BUTTON_RELEASE |
-                               XCB_EVENT_MASK_POINTER_MOTION,
-                               XCB_GRAB_MODE_ASYNC,
-                               XCB_GRAB_MODE_ASYNC,
-                               globalconf.screen->root,
-                               XCB_NONE,
-                               XCB_CURRENT_TIME);
-
   /** Process MapNotify event to get the NameWindowPixmap
    *  \todo get only MapNotify? */
   xcb_aux_sync(globalconf.connection);
-
   unagi_event_handle_poll_loop(unagi_event_handle);
 
   xcb_ungrab_server(globalconf.connection);
-
-  /* Grab  the keyboard  in an  active way  to avoid  "weird" behavior
-     (e.g. being  able to type in  a window which may  be not selected
-     due  to  rescaling)  due   to  the  hack  consisting  in  mapping
-     previously unmapped windows to get their Pixmap */
-  const xcb_grab_keyboard_cookie_t grab_keyboard_cookie =
-    xcb_grab_keyboard_unchecked(globalconf.connection, false, globalconf.screen->root,
-				XCB_CURRENT_TIME, XCB_GRAB_MODE_ASYNC,
-				XCB_GRAB_MODE_ASYNC);
+  xcb_flush(globalconf.connection);
 
   _expose_global.windows_itree_before_enter = globalconf.windows_itree;
   globalconf.windows_itree = util_itree_new();
@@ -1070,15 +1091,7 @@ _expose_enter(void)
   _expose_global.windows_tail_before_enter = globalconf.windows_tail;
   globalconf.windows_tail = prev_window;
 
-  if(!_expose_grab_finalize(&grab_pointer_cookie, &grab_keyboard_cookie))
-    {
-      _expose_free_memory();
-      unagi_warn("Plugin cannot be enabled: see the messages above");
-      return false;
-    }
-
   globalconf.force_repaint = true;
-
   _expose_global.entered = true;
   unagi_debug("=> Entered");
   return true;
