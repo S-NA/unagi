@@ -27,6 +27,9 @@
 #include <dlfcn.h>
 #include <getopt.h>
 #include <stdlib.h>
+#include <errno.h>
+#include <sys/types.h>
+#include <dirent.h>
 
 #include <xcb/xcb.h>
 #include <xcb/composite.h>
@@ -60,15 +63,67 @@
 
 unagi_conf_t globalconf;
 
-#define CONFIG_FILENAME PACKAGE_NAME ".conf"
+#define CONFIG_FILENAME "core.conf"
+
+/** If the configuration directory path has not been specified through
+ *  program arguments, set the path in the following order:
+ *
+ *   1. $XDG_CONFIG_HOME directory ($HOME and other directories)
+ *   2. Build time directory (/usr/local/etc/xdg/unagi by default)
+ *   3. Other $XDG_CONFIG_DIRS directories
+ *
+ *  Also, use the same directory for the next call
+ *  (globalconf.conf_path), otherwise another file in a completely
+ *  different directory may be used next time...
+ */
+static void
+_unagi_set_conf_path(void)
+{
+  char *tmp = calloc(FILENAME_MAX, 1);
+  xdgHandle xdg;
+  xdgInitHandle(&xdg);
+
+#define RELPATH PACKAGE_NAME "/" CONFIG_FILENAME
+
+  const char *xdg_config_home = xdgConfigHome(&xdg);
+  snprintf(tmp, FILENAME_MAX - 1, "%s/" RELPATH, xdg_config_home);
+  struct stat s;
+  if(stat(tmp, &s) == 0)
+    {
+      tmp[strlen(tmp) - strlen(CONFIG_FILENAME) - 1] = '\0';
+      globalconf.conf_path = strdup(tmp);
+    }
+
+  else if(stat(XDG_CONFIG_DIR "/" CONFIG_FILENAME, &s) == 0)
+    globalconf.conf_path = strdup(XDG_CONFIG_DIR);
+
+  else
+    for(const char * const *p = xdgConfigDirectories(&xdg); *p; p++)
+      {
+        snprintf(tmp, FILENAME_MAX - 1, "%s/" RELPATH, *p);
+        if(stat(tmp, &s) == 0)
+          {
+            const size_t path_len = strlen(*p) + strlen("/" PACKAGE_NAME) + 1;
+            globalconf.conf_path = malloc(path_len);
+            snprintf(globalconf.conf_path, path_len, "%s/" PACKAGE_NAME, *p);
+            break;
+          }
+      }
+
+  free(tmp);
+  xdgWipeHandle(&xdg);
+
+  if(!globalconf.conf_path)
+    unagi_fatal("Cannot find configuration directory");
+}
 
 /** Parse the configuration file with confuse
  *
  * \param config_fp The configuration file stream
  * \return Return true if parsing succeeded
  */
-static bool
-_unagi_parse_configuration_file(FILE *config_fp)
+static void
+_unagi_parse_configuration_file(void)
 {
   cfg_opt_t opts[] = {
     CFG_BOOL("vsync-drm", cfg_false, CFGF_NONE),
@@ -78,10 +133,14 @@ _unagi_parse_configuration_file(FILE *config_fp)
   };
 
   globalconf.cfg = cfg_init(opts, CFGF_NONE);
-  if(cfg_parse_fp(globalconf.cfg, config_fp) == CFG_PARSE_ERROR)
-    return false;
+  char *fname_path = unagi_util_get_configuration_filename_path(CONFIG_FILENAME);
+  if(cfg_parse(globalconf.cfg, fname_path) != CFG_SUCCESS)
+    {
+      free(fname_path);
+      unagi_fatal("Can't parse configuration file");
+    }
 
-  return true;
+  free(fname_path);
 }
 
 /** Display help information */
@@ -107,15 +166,13 @@ _unagi_parse_command_line_parameters(int argc, char **argv)
   const struct option long_options[] = {
     { "help", 0, NULL, 'h' },
     { "version", 0, NULL, 'v' },
-    { "config", 1, NULL, 'c' },
+    { "config-path", 1, NULL, 'c' },
     { "rendering-path", 1, NULL, 'r' },
     { "plugins-path", 1, NULL, 'p' },
     { NULL, 0, NULL, 0 }
   };
 
   int opt;
-  FILE *config_fp = NULL;
-
   while((opt = getopt_long(argc, argv, "vhc:r:p:",
 			   long_options, NULL)) != -1)
     {
@@ -130,11 +187,8 @@ _unagi_parse_command_line_parameters(int argc, char **argv)
 	  exit(EXIT_SUCCESS);
 	  break;
 	case 'c':
-	  if(!strlen(optarg) || !(config_fp = fopen(optarg, "r")))
-	    {
-	      _unagi_display_help();
-	      exit(EXIT_FAILURE);
-	    }
+	  if(optarg && strlen(optarg))
+            globalconf.conf_path = strdup(optarg);
 	  break;
 	case 'r':
 	  if(optarg && strlen(optarg))
@@ -151,31 +205,10 @@ _unagi_parse_command_line_parameters(int argc, char **argv)
 	}
     }
 
-  /* Get the configuration file */
-  if(!config_fp)
-    {
-      /* Look    for    the    configuration    file    in    Autoconf
-	 $sysconfigdir/xdg, then fall back on XDG if not found */
-      if((config_fp = fopen(XDG_CONFIG_DIR "/" CONFIG_FILENAME, "r")) == NULL)
-	{
-	  xdgHandle xdg;
-	  xdgInitHandle(&xdg);
-	  config_fp = xdgConfigOpen(CONFIG_FILENAME, "r", &xdg);
-	  xdgWipeHandle(&xdg);
-	}
+  if(!globalconf.conf_path)
+    _unagi_set_conf_path();
 
-      if(!config_fp)
-	unagi_fatal("Can't open configuration file");
-    }
-
-  /* Parse configuration file */
-  if(!_unagi_parse_configuration_file(config_fp))
-    {
-      fclose(config_fp);
-      unagi_fatal("Can't parse configuration file");
-    }
-
-  fclose(config_fp);
+  _unagi_parse_configuration_file();
 
   /* Get the rendering backend path if not given in the command line
      parameters */
@@ -218,6 +251,7 @@ _unagi_exit_cleanup(void)
 
   free(globalconf.crtc);
 
+  free(globalconf.conf_path);
   cfg_free(globalconf.cfg);
   free(globalconf.rendering_dir);
   free(globalconf.plugins_dir);

@@ -65,6 +65,10 @@ typedef struct _unagi_display_extensions_t
 /** Global structure holding variables used all across the program */
 typedef struct _unagi_conf_t
 {
+  /** Configuration directory specified through program arguments or
+      set to the first XDG/Autoconf directory where unagi/core.conf
+      has been found */
+  char *conf_path;
   /** libev event loop */
   struct ev_loop *event_loop;
   /** libev I/O watcher on XCB FD, invoked in paint callback to ensure

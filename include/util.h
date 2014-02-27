@@ -55,6 +55,13 @@ void _unagi_fatal(bool, int, const char *, const char *, ...)   \
 void _unagi_warn(int, const char *, const char *, ...)
   __attribute__ ((format(printf, 3, 4)));
 
+#define unagi_info(string, ...) _unagi_info(__LINE__,                   \
+                                            __FUNCTION__,               \
+                                            string, ## __VA_ARGS__)
+
+void _unagi_info(int, const char *, const char *, ...)
+  __attribute__ ((format(printf, 3, 4)));
+
 #define unagi_debug(string, ...) _unagi_debug(__LINE__,                 \
                                               __FUNCTION__,             \
                                               string, ## __VA_ARGS__)
@@ -68,6 +75,8 @@ void _unagi_debug(int, const char *, const char *, ...)
     free(*__ptr);                                  \
     *__ptr = NULL;                                 \
   }
+
+char *unagi_util_get_configuration_filename_path(const char *);
 
 typedef struct _unagi_util_itree_t
 {

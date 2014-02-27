@@ -63,12 +63,11 @@
 #include <string.h>
 #include <stdlib.h>
 
-#include <X11/keysym.h>
-
 #include <xcb/xcb.h>
 #include <xcb/xcb_ewmh.h>
 #include <xcb/xcb_keysyms.h>
 #include <xcb/xcb_aux.h>
+#include <xkbcommon/xkbcommon.h>
 
 #include "structs.h"
 #include "window.h"
@@ -80,21 +79,8 @@
 #include "dbus.h"
 
 #define _PLUGIN_NAME "expose"
+#define _PLUGIN_CONFIG_FILENAME "plugin_" _PLUGIN_NAME ".conf"
 #define _DBUS_NAME UNAGI_DBUS_NAME_PLUGIN_PREFIX _PLUGIN_NAME
-
-#define EXPOSE_NON_FOCUSED_WINDOW_OPACITY \
-  ((uint16_t) (((double) 0.75 * 0xffffffff) / 0xffff))
-
-/** Activation Keysym
- * \todo Should be in configuration file
- */
-#define EXPOSE_KEY_CRTC_CYCLE XK_Tab
-#define EXPOSE_KEY_WINDOW_UP XK_Up
-#define EXPOSE_KEY_WINDOW_PREV XK_Left
-#define EXPOSE_KEY_WINDOW_NEXT XK_Right
-#define EXPOSE_KEY_WINDOW_DOWN XK_Down
-#define EXPOSE_KEY_WINDOW_SELECT XK_Return
-#define EXPOSE_KEY_QUIT XK_Escape
 
 /** Spacing between thumbnails
  * \todo Remove
@@ -150,10 +136,17 @@ typedef struct
 /** Global variables of this plugin */
 static struct
 {
+  /** libconfuse configuration */
+  cfg_t *cfg;
   /** Entered Expose? */
   bool entered;
   /** Atoms structure */
   _expose_atoms_t atoms;
+  /** Opacity of Windows */
+  struct {
+    uint16_t focus;
+    uint16_t unfocus;
+  } window_opacity;
   /** Slots for thumbnails per CRTC */
   _expose_crtc_window_slots_t *crtc_slots;
   /** Current CRTC and Slot (Window) */
@@ -166,9 +159,132 @@ static struct
   /** Mouse pointer position */
   int16_t pointer_x;
   int16_t pointer_y;
+  /** Navigation KeySyms */
+  struct {
+    xcb_keysym_t crtc_cycle;
+    xcb_keysym_t window_up;
+    xcb_keysym_t window_prev;
+    xcb_keysym_t window_next;
+    xcb_keysym_t window_down;
+    xcb_keysym_t window_select;
+    xcb_keysym_t quit;
+  } keys;
 } _expose_global;
 
 extern unagi_plugin_vtable_t plugin_vtable;
+
+#define _WINDOW_GET_OPACITY(opacity)                            \
+  ((opacity) == 1.0 ? UINT16_MAX :                              \
+   ((uint16_t) (((double) (opacity) * 0xffffffff) / 0xffff)))
+
+#define _CONFIGURATION_VALIDATE_OPACITY(pname)                          \
+  static int                                                            \
+  _expose_configuration_validate_##pname##_opacity(cfg_t *cfg,          \
+                                                   cfg_opt_t *opt)      \
+  {                                                                     \
+    double opacity = cfg_opt_getnfloat(opt, 0);                         \
+    if(opacity <= 0.0 || opacity > 1.0)                                 \
+      {                                                                 \
+        cfg_error(_expose_global.cfg,                                   \
+                  "Option '%s': Opacity must be > 0.0 and <= 1.0",      \
+                  opt->name);                                           \
+                                                                        \
+        return -1;                                                      \
+      }                                                                 \
+                                                                        \
+    _expose_global.window_opacity.pname = _WINDOW_GET_OPACITY(opacity); \
+    return 0;                                                           \
+  }
+
+_CONFIGURATION_VALIDATE_OPACITY(focus)
+_CONFIGURATION_VALIDATE_OPACITY(unfocus)
+
+#undef _CONFIGURATION_VALIDATE_OPACITY
+
+#define _VALIDATE_KEY_FUNC(keyname)                                     \
+  static int                                                            \
+  _expose_configuration_validate_##keyname##_key(cfg_t *cfg,            \
+                                                 cfg_opt_t *opt)        \
+  {                                                                     \
+    const char *n = cfg_opt_getnstr(opt, 0);                            \
+    _expose_global.keys.keyname = xkb_keysym_from_name(n,               \
+                                                       XKB_KEYSYM_NO_FLAGS); \
+    if(_expose_global.keys.keyname == XKB_KEY_NoSymbol)                 \
+      {                                                                 \
+        cfg_error(_expose_global.cfg,                                   \
+                  "Option '%s' does not specify a valid key",           \
+                  opt->name, cfg->name);                                \
+                                                                        \
+        return -1;                                                      \
+      }                                                                 \
+                                                                        \
+    return 0;                                                           \
+  }
+
+_VALIDATE_KEY_FUNC(crtc_cycle)
+_VALIDATE_KEY_FUNC(window_up)
+_VALIDATE_KEY_FUNC(window_prev)
+_VALIDATE_KEY_FUNC(window_next)
+_VALIDATE_KEY_FUNC(window_down)
+_VALIDATE_KEY_FUNC(window_select)
+_VALIDATE_KEY_FUNC(quit)
+
+#undef _CONFIGURATION_VALIDATE_KEY
+
+static void
+_expose_parse_configuration(void)
+{
+  cfg_opt_t windows_keys_opts[] = {
+    CFG_STR_LIST("up", "{Up}", CFGF_NONE),
+    CFG_STR_LIST("previous", "{Left}", CFGF_NONE),
+    CFG_STR_LIST("next", "{Right}", CFGF_NONE),
+    CFG_STR_LIST("down", "{Down}", CFGF_NONE),
+    CFG_STR_LIST("select", "{Return}", CFGF_NONE),
+    CFG_END()
+  };
+
+  cfg_opt_t keys_opts[] = {
+    CFG_STR_LIST("crtc-cycle", "{Tab}", CFGF_NONE),
+    CFG_SEC("windows", windows_keys_opts, CFGF_NONE),
+    CFG_STR_LIST("quit", "{Escape}", CFGF_NONE),
+    CFG_END()
+  };
+
+  cfg_opt_t opts[] = {
+    CFG_FLOAT("focus-window-opacity", 1.0, CFGF_NONE),
+    CFG_FLOAT("unfocus-window-opacity", 0.75, CFGF_NONE),
+    CFG_SEC("keys", keys_opts, CFGF_NONE),
+    CFG_END()
+  };
+
+  _expose_global.cfg = cfg_init(opts, CFGF_NONE);
+
+#define _VALIDATE_SET_FUNC(name, vf_suffix)                             \
+  cfg_set_validate_func(_expose_global.cfg, name,                       \
+                        _expose_configuration_validate_##vf_suffix);
+
+  _VALIDATE_SET_FUNC("focus-window-opacity", focus_opacity)
+  _VALIDATE_SET_FUNC("unfocus-window-opacity", unfocus_opacity)
+  _VALIDATE_SET_FUNC("keys|crtc-cycle", crtc_cycle_key)
+  _VALIDATE_SET_FUNC("keys|windows|up", window_up_key)
+  _VALIDATE_SET_FUNC("keys|windows|previous", window_prev_key)
+  _VALIDATE_SET_FUNC("keys|windows|next", window_next_key)
+  _VALIDATE_SET_FUNC("keys|windows|down", window_down_key)
+  _VALIDATE_SET_FUNC("keys|windows|select", window_select_key)
+  _VALIDATE_SET_FUNC("keys|quit", quit_key)
+#undef _VALIDATE_SET_FUNC
+
+  char *fname_path =
+    unagi_util_get_configuration_filename_path(_PLUGIN_CONFIG_FILENAME);
+
+  if(cfg_parse(_expose_global.cfg, fname_path) != CFG_SUCCESS)
+    {
+      free(fname_path);
+      unagi_fatal("Can't parse configuration file");
+    }
+
+  free(fname_path);
+}
 
 static inline void
 _expose_pointer_move_center(const unagi_window_t *window)
@@ -245,6 +361,8 @@ expose_constructor(void)
   _expose_global.atoms.current_desktop_cookie =
     xcb_ewmh_get_current_desktop_unchecked(&globalconf.ewmh,
                                            globalconf.screen_nbr);
+
+  _expose_parse_configuration();
 }
 
 /** Update    the     values    of     _NET_CLIENT_LIST    (required),
@@ -658,7 +776,7 @@ _expose_prepare_windows(_expose_crtc_window_slots_t *crtc_slots,
 
       /* Consider the window non-focused, actually handle later by
          expose_pre_paint() */
-      scale_window->transform_opacity = EXPOSE_NON_FOCUSED_WINDOW_OPACITY;
+      scale_window->transform_opacity = _expose_global.window_opacity.unfocus;
 
       /* Create the region for the scaled window, added to global
          damaged Region upon receiving DamageNotify event */
@@ -1056,6 +1174,11 @@ expose_event_handle_damage_notify(xcb_damage_notify_event_t *event,
     window->damaged = false;
 }
 
+/** Handle KeyRelease event
+ *
+ *  @todo: Implement XKB support, until then xmodmap will not be
+ *         considered among other things...
+ */
 static void
 expose_event_handle_key_release(xcb_key_release_event_t *event,
                                 unagi_window_t *w __attribute__ ((unused)))
@@ -1063,58 +1186,38 @@ expose_event_handle_key_release(xcb_key_release_event_t *event,
   if(!_expose_global.entered)
     return;
 
-  switch(unagi_key_getkeysym(event->detail, event->state))
+  const xcb_keysym_t keysym = unagi_key_getkeysym(event->detail, event->state);
+  if(globalconf.crtc_len > 1 &&
+     keysym == _expose_global.keys.crtc_cycle)
     {
-    case EXPOSE_KEY_CRTC_CYCLE:
-      if(globalconf.crtc_len > 1)
-        {
-          unsigned int crtc_i;
-          for(crtc_i = 0; crtc_i < globalconf.crtc_len; crtc_i++)
-            if(event->root_x >= globalconf.crtc[crtc_i]->x &&
-               event->root_x <= (globalconf.crtc[crtc_i]->x +
-                                 globalconf.crtc[crtc_i]->width) &&
-               event->root_y >= globalconf.crtc[crtc_i]->y &&
-               event->root_y <= (globalconf.crtc[crtc_i]->y +
-                                 globalconf.crtc[crtc_i]->height))
-              break;
+      unsigned int crtc_i;
+      for(crtc_i = 0; crtc_i < globalconf.crtc_len; crtc_i++)
+        if(event->root_x >= globalconf.crtc[crtc_i]->x &&
+           event->root_x <= (globalconf.crtc[crtc_i]->x +
+                             globalconf.crtc[crtc_i]->width) &&
+           event->root_y >= globalconf.crtc[crtc_i]->y &&
+           event->root_y <= (globalconf.crtc[crtc_i]->y +
+                             globalconf.crtc[crtc_i]->height))
+          break;
 
-          // Move the pointer to the middle of the first window of the screen
-          crtc_i = (crtc_i >= (globalconf.crtc_len - 1)) ? 0 : crtc_i + 1;
-          _expose_pointer_move_center(
-            _expose_global.crtc_slots[crtc_i].slots[0].scale_window.window);
-      }
-
-      break;
-
-    case EXPOSE_KEY_WINDOW_UP:
-      _expose_up_down_update_current_slot(event->root_x, event->root_y, -1);
-      break;
-
-    case EXPOSE_KEY_WINDOW_PREV:
-      _expose_previous_next_update_current_slot(event->root_x, event->root_y, -1);
-      break;
-
-    case EXPOSE_KEY_WINDOW_NEXT:
-      _expose_previous_next_update_current_slot(event->root_x, event->root_y, 1);
-      break;
-
-    case EXPOSE_KEY_WINDOW_DOWN:
-      _expose_up_down_update_current_slot(event->root_x, event->root_y, 1);
-      break;
-
-    case EXPOSE_KEY_WINDOW_SELECT:
-      if(_expose_update_current_crtc_and_slot(event->root_x, event->root_y))
-        _expose_show_selected_window();
-
-      break;
-
-    case EXPOSE_KEY_QUIT:
-      _expose_quit();
-      break;
-
-    default:
-      break;
+      // Move the pointer to the middle of the first window of the screen
+      crtc_i = (crtc_i >= (globalconf.crtc_len - 1)) ? 0 : crtc_i + 1;
+      _expose_pointer_move_center(
+        _expose_global.crtc_slots[crtc_i].slots[0].scale_window.window);
     }
+  else if(keysym == _expose_global.keys.window_up)
+    _expose_up_down_update_current_slot(event->root_x, event->root_y, -1);
+  else if(keysym == _expose_global.keys.window_prev)
+    _expose_previous_next_update_current_slot(event->root_x, event->root_y, -1);
+  else if(keysym == _expose_global.keys.window_next)
+    _expose_previous_next_update_current_slot(event->root_x, event->root_y, 1);
+  else if(keysym == _expose_global.keys.window_down)
+    _expose_up_down_update_current_slot(event->root_x, event->root_y, 1);
+  else if(keysym == _expose_global.keys.window_select &&
+          _expose_update_current_crtc_and_slot(event->root_x, event->root_y))
+    _expose_show_selected_window();
+  else if(keysym == _expose_global.keys.quit)
+    _expose_quit();
 }
 
 /** Check whether the given window is within the given coordinates
@@ -1254,9 +1357,9 @@ expose_pre_paint(void)
 
       if(_expose_global.current_slot &&
          _expose_global.current_slot->scale_window.window == window)
-        new_opacity = UINT16_MAX;
+        new_opacity = _expose_global.window_opacity.focus;
       else
-        new_opacity = EXPOSE_NON_FOCUSED_WINDOW_OPACITY;
+        new_opacity = _expose_global.window_opacity.unfocus;
 
       if(new_opacity != window->transform_opacity && !window->damaged)
         {
@@ -1268,7 +1371,8 @@ expose_pre_paint(void)
       window->transform_opacity = new_opacity;
 
       unagi_debug("Window %jx: Set opacity for: opaque=%d, pointer: x=%d, y=%d",
-                  window->id, window->transform_opacity == UINT16_MAX,
+                  window->id,
+                  window->transform_opacity == _expose_global.window_opacity.focus,
                   _expose_global.pointer_x, _expose_global.pointer_y);
     }
 }
@@ -1334,6 +1438,8 @@ expose_destructor(void)
 
   if(_expose_global.entered)
     _expose_quit();
+
+  cfg_free(_expose_global.cfg);
 }
 
 /** Structure holding all the functions addresses */

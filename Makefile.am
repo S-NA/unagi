@@ -1,5 +1,5 @@
 confdir = ${XDG_CONFIG_DIR}
-dist_conf_DATA = ${PACKAGE_NAME}.conf
+dist_conf_DATA = conf/core.conf conf/plugin_expose.conf
 
 EXTRA_DIST = BUGS COPYING unagi.pc.in autogen.sh
 

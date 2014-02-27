@@ -36,7 +36,8 @@ UNAGI_REQUIRES="libxdg-basedir >= 1.0.0 \
  xcb-ewmh >= 0.4.0 \
  xcb-event \
  xcb-aux \
- xcb-keysyms"
+ xcb-keysyms \
+ xkbcommon"
 
 AC_SUBST(UNAGI_REQUIRES)
 
@@ -67,10 +68,6 @@ PKG_CHECK_MODULES(RENDER_BACKEND, [
 AC_SUBST(RENDER_BACKEND_CFLAGS)
 AC_SUBST(RENDER_BACKEND_LIBS)
 
-# Checks for header files
-AC_CHECK_HEADERS([X11/keysym.h X11/XF86keysym.h], [],
-		 [AC_MSG_ERROR([Require Xlib headers related to keyboard])], [])
-
 # Checks for typedefs, structures, and compiler characteristics
 AC_HEADER_STDBOOL
 AC_TYPE_SSIZE_T
@@ -89,7 +86,7 @@ CFLAGS="$CFLAGS -DPLUGINS_DIR='\"$pluginsdir\"'"
 # configuration file
 if test -z "$XDG_CONFIG_DIR"
 then
-	XDG_CONFIG_DIR=$sysconfdir/xdg
+	XDG_CONFIG_DIR=$sysconfdir/xdg/$PACKAGE_NAME
 fi
 
 AC_SUBST(XDG_CONFIG_DIR)

@@ -9,12 +9,13 @@ following command:
 
 $ unagi
 
-It  will look  for a  configuration file  in `$sysconfigdir/xdg/'  (by
-default `/usr/local/etc/xdg/'), then fallback on XDG Base Directories,
-namely   `$HOME/.config/'  then   `/etc/xdg/',  if   `XDG_CONFIG_DIRS'
+It will look for 'unagi' configuration directory in `$XDG_CONFIG_HOME'
+(usually `$HOME/.config/unagi'), then in `$sysconfigdir/xdg/unagi' (by
+default `/usr/local/etc/xdg/unagi')  and finally fallback in  XDG Base
+Directories    (usually   `/etc/xdg/unagi'),    if   `XDG_CONFIG_DIRS'
 environment  variable  is  not  defined (as  specified  in  `XDG  Base
 Directory Specification').   You can also specified  the configuration
-file by passing `-c' option.
+directory file by passing `-c' option.
 
 You may  find the program  documentation in doc/ directory  in various
 format (HTML, LaTeX and man pages).
@@ -22,7 +23,7 @@ format (HTML, LaTeX and man pages).
 You  can  also  run  it  without installing  anything  by  typing  the
 following command from the source directory:
 
-$ ./src/unagi  -r rendering/.libs/ -p plugins/.libs/ -c unagi.conf
+$ ./src/unagi  -r rendering/.libs/ -p plugins/.libs/ -c conf/
 
 Awesome configuration for windows opacity
 =========================================
@@ -60,6 +61,21 @@ client.add_signal(
          c.opacity = 0.7
       end
    end)
+
+Expose
+======
+
+You  can  setup  all   Expose  settings  through  `plugin_expose.conf'
+configuration  file.   Note that  the  keys  names  are XKB  ones  (as
+returned for  example by `xmodmap  -pke') and  that at the  moment you
+cannot specify any modifiers though.
+
+You can start Expose (also available in `src/' directory of the source
+tree)  with  the  following  commands  (and  then  use  the  mouse  or
+keybindings defined  in the configuration  file to select  or navigate
+between windows):
+
+$ unagi-client plugin.expose.enter
 
 Xephyr
 ======

@@ -25,6 +25,7 @@
 #include <stdarg.h>
 #include <string.h>
 #include <stdlib.h>
+#include <limits.h>
 
 #include "structs.h"
 #include "util.h"
@@ -66,6 +67,18 @@ _unagi_warn(const int line, const char *func, const char *fmt, ...)
   DO_DISPLAY_MESSAGE("WARN");
 }
 
+/** Information message
+ *
+ * \param line Line number
+ * \param func Calling function string
+ * \param fmt Format of the message
+ */
+void
+_unagi_info(const int line, const char *func, const char *fmt, ...)
+{
+  DO_DISPLAY_MESSAGE("INFO");
+}
+
 /** Debugging message
  *
  * \param line Line number
@@ -87,6 +100,17 @@ _unagi_debug(const int line __attribute__((unused)),
 {
 }
 #endif /* __DEBUG__ */
+
+char *
+unagi_util_get_configuration_filename_path(const char *fname)
+{
+  const size_t path_len = strlen(globalconf.conf_path) + strlen(fname) + 2;
+  char *path = malloc(path_len);
+  snprintf(path, path_len, "%s/%s", globalconf.conf_path, fname);
+
+  unagi_info("Getting configuration file '%s'", path);
+  return path;
+}
 
 /** Implementation of  a lightweight  balanced Binary Tree  (AVL) with
  *  uint32_t as key and void * as values, meaningful when lookups need
