@@ -27,10 +27,7 @@
 
 #include <system.h>
 #include <stdint.h>
-
-#ifdef HAVE_SYS_TYPES_H
-# include <sys/types.h>
-#endif
+#include <sys/types.h>
 
 #define mod(x, N) ((((x) < 0) ? (((x) % (N)) + (N)) : (x)) % (N))
 #define min(x, y) ((x) < (y) ? (x) : (y))
