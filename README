@@ -77,6 +77,73 @@ between windows):
 
 $ unagi-client plugin.expose.enter
 
+`window-select-cmd' or why I don't end up on the Window I selected?
+-------------------------------------------------------------------
+
+`window-select-cmd'  allow to  specify  a shell  command  to select  a
+Window through Expose, so you  can use awesome-client or your favorite
+Window  Manager client  command  instead of  EWMH  standards that  all
+Window Manager  should follow. The  shell command *MUST*  contain `%d'
+and corresponds to the selected Window ID.
+
+Here are some reasons why you may need it:
+
+  * EWMH standards is utterly broken for multiple monitors with XRandR
+    (eg _NET_*_DESKTOP* only considers one monitor), so if your select
+    a Window on  the secondary monitor, you may end  up at the desktop
+    number of the secondary monitor *but* on the primary monitor...
+
+  * If you  notice that for some  reasons your Window Manager  or some
+    extensions (for example Shifty for  Awesome has such bug) does not
+    handle    well     Root    Property     _NET_CURRENT_DESKTOP    or
+    _NET_ACTIVE_WINDOW    (`xprop   -root`)    or   Window    Property
+    _NET_ACTIVE_WINDOW (`xprop' then click on the Window).
+
+The following  sections give some examples  how it can be  set up with
+Awesome.
+
+Awesome < 3.5-rc1 configuration
++++++++++++++++++++++++++++++++
+
+As `jumpto' function is not  implemented before that version, you need
+to add the following to your Awesome `rc.lua':
+
+-- Jump to the given client.  Takes care of focussing the screen, the right tag,
+-- etc.
+-- @param c the client to jump to
+-- @param merge If true then merge tags when clients are not visible.
+function jumpto(c)
+    local capi = {client = client,
+                  mouse = mouse,
+                  screen = screen}
+
+    local tag = require("awful.tag")
+    local s = capi.client.focus and capi.client.focus.screen or capi.mouse.screen
+    -- focus the screen
+    if s ~= c.screen then
+        capi.mouse.screen = c.screen
+    end
+
+    -- Try to make client visible, this also covers e.g. sticky
+    local t = c:tags()[1]
+    if t and not c:isvisible() then
+        if merge then
+            t.selected = true
+        else
+            tag.viewonly(t)
+        end
+    end
+
+    -- focus the client
+    capi.client.focus = c
+    c:raise()
+end
+awful.client.jumpto = jumpto
+
+Then, you can set `window-select-cmd' (note the `%d'):
+
+window-select-cmd = "echo 'for k, c in pairs(client.get()) do if c.window == %d then awful.client.jumpto(c); break end end' | awesome-client"
+
 Xephyr
 ======
 

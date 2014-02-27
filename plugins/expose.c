@@ -147,6 +147,12 @@ static struct
     uint16_t focus;
     uint16_t unfocus;
   } window_opacity;
+  /** Allow to specify a command format to run to select a Window
+      rather (%d is replaced by the actual Window ID) than
+      _NET_CURRENT_DESKTOP and then _NET_ACTIVE_WINDOW ClientMessage
+      (EWMH standard is utterly broken for multiple CRTCs support
+      through XRandR) */
+  const char *window_select_cmd_fmt;
   /** Slots for thumbnails per CRTC */
   _expose_crtc_window_slots_t *crtc_slots;
   /** Current CRTC and Slot (Window) */
@@ -253,6 +259,7 @@ _expose_parse_configuration(void)
   cfg_opt_t opts[] = {
     CFG_FLOAT("focus-window-opacity", 1.0, CFGF_NONE),
     CFG_FLOAT("unfocus-window-opacity", 0.75, CFGF_NONE),
+    CFG_STR("window-select-cmd", NULL, CFGF_NONE),
     CFG_SEC("keys", keys_opts, CFGF_NONE),
     CFG_END()
   };
@@ -284,6 +291,12 @@ _expose_parse_configuration(void)
     }
 
   free(fname_path);
+
+  _expose_global.window_select_cmd_fmt = cfg_getstr(_expose_global.cfg,
+                                                    "window-select-cmd");
+
+  if(!strlen(_expose_global.window_select_cmd_fmt))
+    _expose_global.window_select_cmd_fmt = NULL;
 }
 
 static inline void
@@ -1073,17 +1086,37 @@ _expose_enter(void)
   return true;
 }
 
-/** Show the selected window (through _NET_ACTIVE_WINDOW
- *  ClientMessage) after changing desktop (through
- *  _NET_CURRENT_DESKTOP ClientMessage) if necessary.
+/** Show the selected window, either by:
  *
- * \param window The window object to show
+ *   - If window-select-cmd setting has been set, call that command to
+ *     select a Window
+ *
+ *   - _NET_ACTIVE_WINDOW ClientMessage after changing desktop through
+ *     _NET_CURRENT_DESKTOP ClientMessage if necessary
  */
 static void
 _expose_show_selected_window(void)
 {
   unagi_window_t *window = _expose_global.current_slot->scale_window.window;
-  if(window->id != *_expose_global.atoms.active_window)
+  if(_expose_global.window_select_cmd_fmt)
+    {
+      /* xcb_window_t is always an uint32_t... */
+      const size_t window_select_cmd_len = strlen(_expose_global.window_select_cmd_fmt) + 11;
+      char *window_select_cmd = malloc(window_select_cmd_len);
+      snprintf(window_select_cmd, window_select_cmd_len,
+               _expose_global.window_select_cmd_fmt, window->id);
+
+      _expose_quit();
+
+      int ret;
+      if((ret = system(window_select_cmd)) != 0)
+        unagi_warn("Failed to select Window %jx: system('%s') failed (status=%d)",
+                   (uintmax_t) window->id, window_select_cmd, ret);
+
+      free(window_select_cmd);
+      return;
+    }
+  else if(window->id != *_expose_global.atoms.active_window)
     {
       uint32_t window_desktop;
       if(!xcb_ewmh_get_wm_desktop_reply(&globalconf.ewmh,
