@@ -1097,7 +1097,13 @@ _expose_enter(void)
 static void
 _expose_show_selected_window(void)
 {
-  unagi_window_t *window = _expose_global.current_slot->scale_window.window;
+  unagi_window_t *window = _expose_global.current_slot->window;
+
+  /* Quit before sending any request (before that all Windows have
+     override-redirect set and previously unmapped Windows were
+     mapped) */
+  _expose_quit();
+
   if(_expose_global.window_select_cmd_fmt)
     {
       /* xcb_window_t is always an uint32_t... */
@@ -1106,15 +1112,12 @@ _expose_show_selected_window(void)
       snprintf(window_select_cmd, window_select_cmd_len,
                _expose_global.window_select_cmd_fmt, window->id);
 
-      _expose_quit();
-
       int ret;
       if((ret = system(window_select_cmd)) != 0)
         unagi_warn("Failed to select Window %jx: system('%s') failed (status=%d)",
                    (uintmax_t) window->id, window_select_cmd, ret);
 
       free(window_select_cmd);
-      return;
     }
   else if(window->id != *_expose_global.atoms.active_window)
     {
@@ -1143,8 +1146,6 @@ _expose_show_selected_window(void)
           unagi_window_map_raised(window);
         }
     }
-
-  _expose_quit();
 }
 
 static void
