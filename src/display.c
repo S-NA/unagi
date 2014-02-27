@@ -424,6 +424,7 @@ void
 unagi_display_update_screen_information(xcb_randr_get_screen_info_cookie_t screen_info_cookie,
                                         xcb_randr_get_screen_resources_cookie_t screen_resources_cookie)
 {
+  globalconf.crtc_len = 0;
   int crtcs_len = 0;
   if(!screen_info_cookie.sequence || !screen_resources_cookie.sequence)
     goto randr_not_available;
