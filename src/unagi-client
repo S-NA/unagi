@@ -27,7 +27,7 @@ DBUS_OBJECT_PATH=/org/minidweeb/unagi
 #  3. If the KeyRelease X Event is received by Unagi *after* entering Expose
 #     (issuing GrabKeyboard), then this will select the current Window and
 #     exit Expose
-sleep 0.1
+sleep 0.2
 
 OUTPUT=$(dbus-send --session --type=method_call --print-reply --dest="$DBUS_NAME" \
     "${DBUS_OBJECT_PATH}" "${DBUS_NAME}.$1")
