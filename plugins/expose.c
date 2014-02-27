@@ -82,11 +82,6 @@
 #define _PLUGIN_CONFIG_FILENAME "plugin_" _PLUGIN_NAME ".conf"
 #define _DBUS_NAME UNAGI_DBUS_NAME_PLUGIN_PREFIX _PLUGIN_NAME
 
-/** Spacing between thumbnails
- * \todo Remove
- */
-#define STRIP_SPACING 0
-
 /** Expose window */
 typedef struct
 {
@@ -548,16 +543,15 @@ _expose_create_slots(_expose_crtc_window_slots_t *crtc_slots)
      windows */
   crtc_slots->nstrips = (uint8_t) sqrt(crtc_slots->nwindows + 1);
 
-  /* Each strip height excludes spacing */
-  const uint16_t strip_height = (uint16_t) 
-    ((crtc_slots->crtc->height - STRIP_SPACING *
-      (crtc_slots->nstrips + 1)) / crtc_slots->nstrips);
+  const uint16_t strip_height = (uint16_t)
+    (crtc_slots->crtc->height / crtc_slots->nstrips);
 
   /* The number of windows per strip depends */
   crtc_slots->nwindows_per_strip = (unsigned int)
     ceilf((float) crtc_slots->nwindows / (float) crtc_slots->nstrips);
 
-  int16_t current_y = crtc_slots->crtc->y + STRIP_SPACING, current_x;
+  int16_t current_y = crtc_slots->crtc->y;
+  int16_t current_x;
 
   /* Each slot is a rectangle  whose coordinates depends on the number
      of strips and the number of windows */	
@@ -566,7 +560,7 @@ _expose_create_slots(_expose_crtc_window_slots_t *crtc_slots)
   /* Create the strips of windows */
   for(uint8_t strip_n = 0; strip_n < crtc_slots->nstrips; strip_n++)
     {
-      current_x = crtc_slots->crtc->x + STRIP_SPACING;
+      current_x = crtc_slots->crtc->x;
 
       /* Number of slots for this strip which depends on the number of
 	 remaining slots (the last strip may contain less windows) */
@@ -574,10 +568,8 @@ _expose_create_slots(_expose_crtc_window_slots_t *crtc_slots)
         (crtc_slots->nwindows - slot_n > crtc_slots->nwindows_per_strip ?
          crtc_slots->nwindows_per_strip : crtc_slots->nwindows - slot_n);
 
-      /* Slot width including spacing */
       const uint16_t slot_width = (uint16_t)
-	((crtc_slots->crtc->width - STRIP_SPACING *
-          (strip_slots_n + 1)) / strip_slots_n);
+        (crtc_slots->crtc->width / strip_slots_n);
 
       /* Now create the slots associated to this strip */
       for(unsigned int strip_slot = 0; strip_slot < strip_slots_n; strip_slot++)
@@ -587,11 +579,11 @@ _expose_create_slots(_expose_crtc_window_slots_t *crtc_slots)
 	  crtc_slots->slots[slot_n].extents.width = slot_width;
 	  crtc_slots->slots[slot_n].extents.height = strip_height;
 
-	  current_x = (int16_t) (current_x + slot_width + STRIP_SPACING);
+	  current_x = (int16_t) (current_x + slot_width);
 	  ++slot_n;
 	}
 
-      current_y = (int16_t) (current_y + strip_height + STRIP_SPACING);
+      current_y = (int16_t) (current_y + strip_height);
     }
 }
 
