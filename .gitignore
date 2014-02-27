@@ -27,3 +27,6 @@ TAGS
 ChangeLog
 doc/api/
 compile
+config.h
+config.h.in
+stamp-h?

@@ -5,6 +5,7 @@ AC_INIT([unagi],
 	[0.3.4],
 	[Arnaud Fontaine <arnau@mini-dweeb.org])
 
+AC_CONFIG_HEADERS([config.h])
 AC_CONFIG_MACRO_DIR([m4])
 AM_INIT_AUTOMAKE
 AM_MAINTAINER_MODE

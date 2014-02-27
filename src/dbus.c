@@ -31,7 +31,6 @@
 #include "structs.h"
 #include "dbus.h"
 
-
 #define _INTERFACE_ADD_MATCH_FMT "type='method_call',interface='%s'"
 
 /** Request D-Bus Bus name and Add Match for Interface as well
