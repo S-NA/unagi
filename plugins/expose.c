@@ -1421,7 +1421,7 @@ expose_dbus_process_message(DBusMessage *msg)
 static void __attribute__((destructor))
 expose_destructor(void)
 {
-  if(plugin_vtable.dbus_process_message)
+  if(globalconf.dbus_connection && plugin_vtable.dbus_process_message)
     unagi_dbus_release_name(_DBUS_NAME);
 
   if(_expose_global.atoms.client_list)
