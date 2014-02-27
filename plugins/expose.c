@@ -1181,8 +1181,7 @@ _expose_up_down_update_current_slot(int16_t x, int16_t y, int index)
        _expose_global.current_slot->extents.x +
        _expose_global.current_slot->extents.width / 2)
       {
-        _expose_global.current_slot = slot;
-        _expose_pointer_move_center(_expose_global.current_slot->scale_window.window);
+        _expose_pointer_move_center(slot->scale_window.window);
         return;
       }
 }
@@ -1194,12 +1193,12 @@ _expose_previous_next_update_current_slot(int16_t x, int16_t y, int index)
      _expose_global.current_crtc->nwindows < 2)
     return;
 
-  _expose_global.current_slot = _expose_global.current_crtc->slots +
+  _expose_window_slot_t *slot = _expose_global.current_crtc->slots +
     mod(_expose_global.current_slot -
         _expose_global.current_crtc->slots + index,
         _expose_global.current_crtc->nwindows);
 
-  _expose_pointer_move_center(_expose_global.current_slot->scale_window.window);
+  _expose_pointer_move_center(slot->scale_window.window);
 }
 
 /** Handle Damage Notify and called before the core DamageNotify event handler.
@@ -1263,6 +1262,8 @@ expose_event_handle_key_release(xcb_key_release_event_t *event,
     _expose_show_selected_window();
   else if(keysym == _expose_global.keys.quit)
     _expose_quit();
+
+  xcb_flush(globalconf.connection);
 }
 
 /** Check whether the given window is within the given coordinates
