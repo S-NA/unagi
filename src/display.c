@@ -478,16 +478,17 @@ unagi_display_update_screen_information(xcb_randr_get_screen_info_cookie_t scree
               globalconf.crtc[i] = crtc_info_reply;
               globalconf.crtc_len++;
               unagi_debug("%jux%ju +%jd +%jd",
-                          crtc_info_reply->width,
-                          crtc_info_reply->height,
-                          crtc_info_reply->x,
-                          crtc_info_reply->y);
+                          (uintmax_t) crtc_info_reply->width,
+                          (uintmax_t) crtc_info_reply->height,
+                          (intmax_t) crtc_info_reply->x,
+                          (intmax_t) crtc_info_reply->y);
             }
           else
             {
-              unagi_warn("Could not get CRTC %d information with RandR", i);
               if(crtc_info_reply)
                 free(crtc_info_reply);
+              else
+                unagi_warn("Could not get CRTC %d information with RandR", i);
             }
         }
 

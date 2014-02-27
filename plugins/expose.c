@@ -158,8 +158,10 @@ static struct
   unagi_window_t *windows_tail_before_enter;
   unagi_util_itree_t *windows_itree_before_enter;
   /** Mouse pointer position */
-  int16_t pointer_x;
-  int16_t pointer_y;
+  struct {
+    int16_t x;
+    int16_t y;
+  } pointer;
   /** Navigation KeySyms */
   struct {
     xcb_keysym_t crtc_cycle;
@@ -830,10 +832,13 @@ static void
 _expose_free_memory(void)
 {
   unagi_util_itree_free(globalconf.windows_itree);
-
   globalconf.windows_itree = _expose_global.windows_itree_before_enter;
+
   globalconf.windows = _expose_global.windows_head_before_enter;
   globalconf.windows_tail = _expose_global.windows_tail_before_enter;
+
+  _expose_global.windows_head_before_enter = NULL;
+  _expose_global.windows_tail_before_enter = NULL;
 
   _expose_window_slot_t *slot;
   for(unsigned int crtc_n = 0; crtc_n < globalconf.crtc_len; crtc_n++)
@@ -865,6 +870,7 @@ _expose_free_memory(void)
     }
 
   unagi_util_free(&_expose_global.crtc_slots);
+  _expose_global.current_slot = NULL;
 }
 
 /** Disable the  plugin by unmapping  the windows which  were unmapped
@@ -1014,8 +1020,8 @@ _expose_enter(void)
   /* Reset Pointer position (MotionNotify are only received once
      entering Expose) and before GrabPointer to avoid race
      condition */
-  _expose_global.pointer_x = -1;
-  _expose_global.pointer_y = -1;
+  _expose_global.pointer.x = -1;
+  _expose_global.pointer.y = -1;
 
   /* Grab the pointer in an active way to avoid EnterNotify event due
    * to the mapping hack */
@@ -1286,8 +1292,8 @@ static void
 expose_event_handle_motion_notify(xcb_motion_notify_event_t *event,
                                   unagi_window_t *w __attribute__((unused)))
 {
-  _expose_global.pointer_x = event->root_x;
-  _expose_global.pointer_y = event->root_y;
+  _expose_global.pointer.x = event->root_x;
+  _expose_global.pointer.y = event->root_y;
 }
 
 /** Convenient  function to  handle X  PropertyNotify event  common to
@@ -1348,7 +1354,7 @@ expose_pre_paint(void)
 
   /* This only happens when just entering Expose as GrabPointer is
      issued at that time */
-  if(_expose_global.pointer_x == -1 || _expose_global.pointer_y == -1)
+  if(_expose_global.pointer.x == -1 || _expose_global.pointer.y == -1)
     {
       xcb_query_pointer_reply_t *query_pointer_reply =
         xcb_query_pointer_reply(globalconf.connection,
@@ -1362,17 +1368,17 @@ expose_pre_paint(void)
           return;
         }
 
-      _expose_global.pointer_x = query_pointer_reply->root_x;
-      _expose_global.pointer_y = query_pointer_reply->root_y;
+      _expose_global.pointer.x = query_pointer_reply->root_x;
+      _expose_global.pointer.y = query_pointer_reply->root_y;
       free(query_pointer_reply);
     }
   else if(_expose_coordinates_within_slot(_expose_global.current_slot,
-                                          _expose_global.pointer_x,
-                                          _expose_global.pointer_y))
+                                          _expose_global.pointer.x,
+                                          _expose_global.pointer.y))
     return;
 
-  _expose_update_current_crtc_and_slot(_expose_global.pointer_x,
-                                       _expose_global.pointer_y);
+  _expose_update_current_crtc_and_slot(_expose_global.pointer.x,
+                                       _expose_global.pointer.y);
 
   unagi_window_t *window_list =
     _expose_global.crtc_slots[0].slots->scale_window.window;
@@ -1397,9 +1403,9 @@ expose_pre_paint(void)
       window->transform_opacity = new_opacity;
 
       unagi_debug("Window %jx: Set opacity for: opaque=%d, pointer: x=%d, y=%d",
-                  window->id,
+                  (uintmax_t) window->id,
                   window->transform_opacity == _expose_global.window_opacity.focus,
-                  _expose_global.pointer_x, _expose_global.pointer_y);
+                  _expose_global.pointer.x, _expose_global.pointer.y);
     }
 }
 

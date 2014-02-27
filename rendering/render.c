@@ -654,8 +654,8 @@ render_paint_window(unagi_window_t *window)
           xcb_xfixes_set_picture_clip_region(globalconf.connection,
                                              render_window->picture,
                                              shape_region,
-                                             window->geometry->border_width,
-                                             window->geometry->border_width);
+                                             (int16_t) window->geometry->border_width,
+                                             (int16_t) window->geometry->border_width);
 
           xcb_xfixes_destroy_region(globalconf.connection, shape_region);
         }
