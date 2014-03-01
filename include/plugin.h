@@ -92,6 +92,11 @@ typedef struct
 {
   /** Plugin name */
   const char *name;
+  /** If its requirements have been met, the plugin can be activated
+      by default or after receiving a D-Bus message. Until then all
+      other plugin functions except to check requirements will not be
+      called */
+  bool activated;
   /** Hook to process D-Bus messages */
   const char *(*dbus_process_message) (DBusMessage *);
   /** Plugin events hooks */
@@ -127,11 +132,12 @@ typedef struct _unagi_plugin_t
 } unagi_plugin_t;
 
 /** Call the appropriate event handlers according to the event type */
-#define UNAGI_PLUGINS_EVENT_HANDLE(event, event_type, window)			\
-  for(unagi_plugin_t *plugin = globalconf.plugins; plugin;			\
+#define UNAGI_PLUGINS_EVENT_HANDLE(event, event_type, window)           \
+  for(unagi_plugin_t *plugin = globalconf.plugins; plugin;              \
       plugin = plugin->next)						\
     {									\
-      if(plugin->enable && plugin->vtable->events.event_type)		\
+      if(plugin->enable && plugin->vtable->activated &&                 \
+         plugin->vtable->events.event_type)                             \
 	(*plugin->vtable->events.event_type)(event, window);		\
     }
 

@@ -305,7 +305,7 @@ _unagi_paint_callback(EV_P_ ev_timer *w, int revents)
 #endif
 
   for(unagi_plugin_t *plugin = globalconf.plugins; plugin; plugin = plugin->next)
-    if(plugin->enable && plugin->vtable->pre_paint)
+    if(plugin->enable && plugin->vtable->activated && plugin->vtable->pre_paint)
       (*plugin->vtable->pre_paint)();
 
   /* Now paint the windows */
@@ -387,7 +387,7 @@ _unagi_paint_callback(EV_P_ ev_timer *w, int revents)
         }
 
       for(unagi_plugin_t *plugin = globalconf.plugins; plugin; plugin = plugin->next)
-        if(plugin->enable && plugin->vtable->post_paint)
+        if(plugin->enable && plugin->vtable->activated && plugin->vtable->post_paint)
           (*plugin->vtable->post_paint)();
 
       /* Rearm the paint timer watcher */

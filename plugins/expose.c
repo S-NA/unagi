@@ -134,8 +134,6 @@ static struct
 {
   /** libconfuse configuration */
   cfg_t *cfg;
-  /** Entered Expose? */
-  bool entered;
   /** Atoms structure */
   _expose_atoms_t atoms;
   /** Opacity of Windows */
@@ -887,7 +885,7 @@ _expose_quit(void)
   xcb_ungrab_keyboard(globalconf.connection, XCB_CURRENT_TIME);
 
   _expose_free_memory();
-  _expose_global.entered = false;
+  plugin_vtable.activated = false;
 
   /* Force repaint of the screen as the plugin is now disabled */
   globalconf.force_repaint = true;
@@ -984,7 +982,7 @@ _expose_grab(void)
 static bool
 _expose_enter(void)
 {
-  if(_expose_global.entered)
+  if(plugin_vtable.activated)
     return true;
 
   if(!unagi_atoms_is_supported(globalconf.ewmh._NET_CLIENT_LIST) ||
@@ -1092,7 +1090,7 @@ _expose_enter(void)
   globalconf.windows_tail = prev_window;
 
   globalconf.force_repaint = true;
-  _expose_global.entered = true;
+  plugin_vtable.activated = true;
   unagi_debug("=> Entered");
   return true;
 }
@@ -1214,7 +1212,7 @@ expose_event_handle_damage_notify(xcb_damage_notify_event_t *event,
   /* Hackish: consider the Window not damaged so the core event
      handler will consider it as never painted and it will be
      repainted it completely */
-  if(_expose_global.entered && window->damaged_ratio != 1.0)
+  if(window->damaged_ratio != 1.0)
     window->damaged = false;
 }
 
@@ -1227,9 +1225,6 @@ static void
 expose_event_handle_key_release(xcb_key_release_event_t *event,
                                 unagi_window_t *w __attribute__ ((unused)))
 {
-  if(!_expose_global.entered)
-    return;
-
   const xcb_keysym_t keysym = unagi_key_getkeysym(event->detail, event->state);
   if(globalconf.crtc_len > 1 &&
      keysym == _expose_global.keys.crtc_cycle)
@@ -1292,8 +1287,7 @@ static void
 expose_event_handle_button_release(xcb_button_release_event_t *event,
 				   unagi_window_t *unused __attribute__ ((unused)))
 {
-  if(_expose_global.entered &&
-     _expose_update_current_crtc_and_slot(event->root_x, event->root_y))
+  if(_expose_update_current_crtc_and_slot(event->root_x, event->root_y))
     _expose_show_selected_window();
 }
 
@@ -1363,9 +1357,6 @@ expose_event_handle_property_notify(xcb_property_notify_event_t *event,
 static void
 expose_pre_paint(void)
 {
-  if(!_expose_global.entered)
-    return;
-
   /* This only happens when just entering Expose as GrabPointer is
      issued at that time */
   if(_expose_global.pointer.x == -1 || _expose_global.pointer.y == -1)
@@ -1431,9 +1422,6 @@ expose_pre_paint(void)
 static void
 expose_post_paint(void)
 {
-  if(!_expose_global.entered)
-    return;
-
   for(unagi_window_t *window = _expose_global.crtc_slots[0].slots->scale_window.window;
       window;
       window = window->next)
@@ -1482,7 +1470,7 @@ expose_destructor(void)
   if(_expose_global.atoms.current_desktop)
     free(_expose_global.atoms.current_desktop);
 
-  if(_expose_global.entered)
+  if(plugin_vtable.activated)
     _expose_quit();
 
   cfg_free(_expose_global.cfg);
@@ -1491,6 +1479,7 @@ expose_destructor(void)
 /** Structure holding all the functions addresses */
 unagi_plugin_vtable_t plugin_vtable = {
   .name = _PLUGIN_NAME,
+  .activated = false,
   .dbus_process_message = expose_dbus_process_message,
   .events = {
     expose_event_handle_damage_notify,
