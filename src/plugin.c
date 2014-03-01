@@ -35,8 +35,8 @@
  * \param name The plugin name
  * \return The plugin loaded or NULL if any error
  */
-unagi_plugin_t *
-unagi_plugin_load(const char *name)
+static unagi_plugin_t *
+_unagi_plugin_load(const char *name)
 {
   unagi_plugin_t *new_plugin = calloc(1, sizeof(unagi_plugin_t));
   char *error;
@@ -77,7 +77,9 @@ unagi_plugin_load_all(void)
   unagi_plugin_t *plugin = globalconf.plugins;
   for(unsigned int plugin_n = 0; plugin_n < plugins_nb; plugin_n++)
     {
-      unagi_plugin_t *new_plugin = unagi_plugin_load(cfg_getnstr(globalconf.cfg, "plugins", plugin_n));
+      unagi_plugin_t *new_plugin = _unagi_plugin_load(cfg_getnstr(globalconf.cfg,
+                                                                  "plugins",
+                                                                  plugin_n));
       if(!new_plugin)
 	continue;
 
@@ -116,27 +118,6 @@ unagi_plugin_search_by_name(const char *name)
   return NULL;
 }
 
-/** Unload  the  given  plugin  and  free  the  associated  memory  if
- *  specified
- *
- * \param plugin A pointer to the plugin to be freed
- * \param do_update_list Should the general plugins list be updated
- */
-void
-unagi_plugin_unload(unagi_plugin_t **plugin, const bool do_update_list)
-{
-  if(do_update_list)
-    {
-      if((*plugin)->prev)
-	(*plugin)->prev->next = (*plugin)->next;
-      else
-	globalconf.plugins = (*plugin)->next;
-    }
-
-  dlclose((*plugin)->dlhandle);
-  free(*plugin);
-}
-
 /** Unload all the plugins and their allocated memory */
 void
 unagi_plugin_unload_all(void)
@@ -147,7 +128,8 @@ unagi_plugin_unload_all(void)
   while(plugin != NULL)
     {
       plugin_next = plugin->next;
-      unagi_plugin_unload(&plugin, false);
+      dlclose(plugin->dlhandle);
+      free(plugin);
       plugin = plugin_next;
     }
 }

@@ -135,11 +135,9 @@ typedef struct _unagi_plugin_t
 	(*plugin->vtable->events.event_type)(event, window);		\
     }
 
-unagi_plugin_t *unagi_plugin_load(const char *);
 void unagi_plugin_load_all(void);
 void unagi_plugin_check_requirements(void);
 unagi_plugin_t *unagi_plugin_search_by_name(const char *);
-void unagi_plugin_unload(unagi_plugin_t **, const bool);
 void unagi_plugin_unload_all(void);
 
 #endif
