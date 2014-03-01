@@ -66,6 +66,19 @@ _unagi_plugin_load(const char *name)
   return NULL;
 }
 
+static inline void
+_unagi_plugin_append_global(unagi_plugin_t *previous_plugin,
+                            unagi_plugin_t *new_plugin)
+{
+  if(!previous_plugin)
+    globalconf.plugins = new_plugin;
+  else
+    {
+      previous_plugin->next = new_plugin;
+      new_plugin->prev = previous_plugin;
+    }
+}
+
 /** Load all the plugins given in the configuration file */
 void
 unagi_plugin_load_all(void)
@@ -74,24 +87,26 @@ unagi_plugin_load_all(void)
   if(!plugins_nb)
     return;
 
-  unagi_plugin_t *plugin = globalconf.plugins;
+  unagi_plugin_t *opacity_plugin = NULL;
+  unagi_plugin_t *plugin = NULL;
   for(unsigned int plugin_n = 0; plugin_n < plugins_nb; plugin_n++)
     {
       unagi_plugin_t *new_plugin = _unagi_plugin_load(cfg_getnstr(globalconf.cfg,
                                                                   "plugins",
                                                                   plugin_n));
       if(!new_plugin)
-	continue;
-
-      if(!globalconf.plugins)
-	globalconf.plugins = plugin = new_plugin;
+        ;
+      else if(strcmp(new_plugin->vtable->name, "opacity") == 0)
+        opacity_plugin = new_plugin;
       else
-	{
-	  plugin->next = new_plugin;
-	  plugin->next->prev = plugin;
-	  plugin = plugin->next;
-	}
+        {
+          _unagi_plugin_append_global(plugin, new_plugin);
+          plugin = new_plugin;
+        }
     }
+
+  if(opacity_plugin)
+    _unagi_plugin_append_global(plugin, opacity_plugin);
 }
 
 /** Enable the plugin if it meets the requirements */

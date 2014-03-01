@@ -617,16 +617,6 @@ render_paint_window(unagi_window_t *window)
     }
 
   uint8_t render_composite_op = XCB_RENDER_PICT_OP_SRC;
-  xcb_render_picture_t alpha_picture = XCB_NONE;
-
-#define _SET_ALPHA_PICTURE(opacity)                             \
-  {                                                             \
-    alpha_picture =                                             \
-      _render_get_window_alpha_picture(render_window, opacity); \
-                                                                \
-    if(alpha_picture != XCB_NONE)                               \
-      render_composite_op = XCB_RENDER_PICT_OP_OVER;            \
-  }
 
   /* TODO: Handle properly non-rectangular windows? */
   switch(window->transform_status)
@@ -634,11 +624,6 @@ render_paint_window(unagi_window_t *window)
     case UNAGI_WINDOW_TRANSFORM_STATUS_NONE:
       if(render_window->is_argb)
         render_composite_op = XCB_RENDER_PICT_OP_OVER;
-
-      if(_render_conf.opacity_plugin &&
-         _render_conf.opacity_plugin->vtable->window_get_opacity)
-        _SET_ALPHA_PICTURE((*_render_conf.opacity_plugin->vtable->window_get_opacity)
-                           (window));
 
       /* For  non-rectangular  Windows, clip  the  Window  Picture to  its
          shaped Region to paint  them properly (otherwise for applications
@@ -664,8 +649,6 @@ render_paint_window(unagi_window_t *window)
 
     case UNAGI_WINDOW_TRANSFORM_STATUS_REQUIRED:
       {
-        _SET_ALPHA_PICTURE((window->transform_opacity));
-
         xcb_render_transform_t render_transform = {
           .matrix11 = _DOUBLE_TO_FIXED(window->transform_matrix[0][0]),
           .matrix12 = _DOUBLE_TO_FIXED(window->transform_matrix[0][1]),
@@ -691,13 +674,26 @@ render_paint_window(unagi_window_t *window)
       break;
 
     case UNAGI_WINDOW_TRANSFORM_STATUS_DONE:
-      _SET_ALPHA_PICTURE((window->transform_opacity));
-
       /* Once the transformation has been done, it is kept until
          FreePicture request is issued, so doing it again will result
          in OOM... */
       break;
     }
+
+  xcb_render_picture_t alpha_picture = XCB_NONE;
+  for(unagi_plugin_t *plugin = globalconf.plugins; plugin; plugin = plugin->next)
+    if(plugin->enable && plugin->vtable->activated &&
+       plugin->vtable->window_get_opacity)
+      {
+        const uint16_t opacity = (*plugin->vtable->window_get_opacity)(window);
+        alpha_picture = _render_get_window_alpha_picture(render_window,
+                                                         opacity);
+
+        if(alpha_picture != XCB_NONE)
+          render_composite_op = XCB_RENDER_PICT_OP_OVER;
+
+        break;
+      }
 
   xcb_render_composite(globalconf.connection,
 		       render_composite_op,

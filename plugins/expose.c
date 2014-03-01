@@ -88,6 +88,8 @@ typedef struct
 {
   /** Rescaled window */
   unagi_window_t *window;
+  /** Is this rescaled window focused (opacity change) */
+  bool is_focus;
   /** If the window was unmapped before enabling the plugin */
   bool was_unmapped;
 } _expose_scale_unagi_window_t;
@@ -780,10 +782,6 @@ _expose_prepare_windows(_expose_crtc_window_slots_t *crtc_slots,
       scale_window->geometry->y = slot->extents.y +
         (slot->extents.height - scale_window->geometry->height) / 2;
 
-      /* Consider the window non-focused, actually handle later by
-         expose_pre_paint() */
-      scale_window->transform_opacity = _expose_global.window_opacity.unfocus;
-
       /* Create the region for the scaled window, added to global
          damaged Region upon receiving DamageNotify event */
       scale_window->region = xcb_generate_id(globalconf.connection);
@@ -1348,6 +1346,16 @@ expose_event_handle_property_notify(xcb_property_notify_event_t *event,
 					    &_expose_global.atoms.current_desktop_cookie);
 }				    
 
+static uint16_t
+expose_window_get_opacity(const unagi_window_t *window)
+{
+  return (_expose_global.current_slot &&
+          _expose_global.current_slot->scale_window.window == window &&
+          _expose_global.current_slot->scale_window.is_focus ?
+          _expose_global.window_opacity.focus :
+          _expose_global.window_opacity.unfocus);
+}
+
 /** If the Pointer is under a different Window than before, then the
  *  current Window under the Pointer is considered focused (eg opaque
  *  opacity) and added to the global damaged Region and the previously
@@ -1385,32 +1393,38 @@ expose_pre_paint(void)
   _expose_update_current_crtc_and_slot(_expose_global.pointer.x,
                                        _expose_global.pointer.y);
 
-  unagi_window_t *window_list =
-    _expose_global.crtc_slots[0].slots->scale_window.window;
-
-  for(unagi_window_t *window = window_list; window; window = window->next)
+  for(_expose_crtc_window_slots_t *crtc = _expose_global.crtc_slots;
+      crtc - _expose_global.crtc_slots < globalconf.crtc_len;
+      crtc++)
     {
-      uint16_t new_opacity;
+      if(!crtc->nwindows)
+        continue;
 
-      if(_expose_global.current_slot &&
-         _expose_global.current_slot->scale_window.window == window)
-        new_opacity = _expose_global.window_opacity.focus;
-      else
-        new_opacity = _expose_global.window_opacity.unfocus;
-
-      if(new_opacity != window->transform_opacity && !window->damaged)
+      for(_expose_window_slot_t *slot = crtc->slots;
+          slot - crtc->slots < crtc->nwindows;
+          slot++)
         {
-          window->damaged = true;
-          window->damaged_ratio = 1.0;
-          unagi_display_add_damaged_region(&window->region, false);
+          bool is_focus = (_expose_global.current_slot &&
+                           _expose_global.current_slot == slot);
+
+          unagi_window_t *window = slot->scale_window.window;
+          if(is_focus != slot->scale_window.is_focus &&
+             /* Optimisation as the whole thumbnail is damaged in the
+                DamageNotify event handler of this plugin */
+             !window->damaged)
+             {
+              window->damaged = true;
+              window->damaged_ratio = 1.0;
+              unagi_display_add_damaged_region(&window->region, false);
+            }
+
+          slot->scale_window.is_focus = is_focus;
+
+          unagi_debug("Window %jx: Focus=%d, pointer: x=%d, y=%d",
+                      (uintmax_t) window->id, is_focus,
+                      _expose_global.pointer.x, _expose_global.pointer.y);
+
         }
-
-      window->transform_opacity = new_opacity;
-
-      unagi_debug("Window %jx: Set opacity for: opaque=%d, pointer: x=%d, y=%d",
-                  (uintmax_t) window->id,
-                  window->transform_opacity == _expose_global.window_opacity.focus,
-                  _expose_global.pointer.x, _expose_global.pointer.y);
     }
 }
 
@@ -1500,7 +1514,7 @@ unagi_plugin_vtable_t plugin_vtable = {
   },
   .check_requirements = expose_check_requirements,
   .window_manage_existing = NULL,
-  .window_get_opacity = NULL,
+  .window_get_opacity = expose_window_get_opacity,
   .pre_paint = expose_pre_paint,
   .post_paint = expose_post_paint
 };

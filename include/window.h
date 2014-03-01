@@ -55,7 +55,6 @@ typedef struct _unagi_window_t
   xcb_pixmap_t pixmap;
   int transform_status;
   double transform_matrix[4][4];
-  uint16_t transform_opacity;
   void *rendering;
   struct _unagi_window_t *next;
   struct _unagi_window_t *prev;
