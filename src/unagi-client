@@ -1,20 +1,27 @@
 #!/bin/sh
 #
 # Very basic wrapper for D-Bus Unagi interface.
-#
-# For example, to exit the program:
-# $ unagi-client exit
-#
-# Or to call enter method for Expose plugin:
-# $ unagi-client plugin.expose.enter
 
 set -e
 
+help()
+{
+    echo "Usage: $0 [OPTIONS] DBUS_ACTION"
+    echo
+    echo "OPTIONS:"
+    echo "  -h, --help           display this help and exit"
+    echo
+    echo "DBUS_ACTION:"
+    echo "  exit                 exit program"
+    echo "  plugin.expose.enter  enter Expose"
+}
+
 if test -z "$1"
 then
-    echo "ERROR: $0 DBUS_ACTION"
+    help
     exit 1
 fi
+`echo "$1" | egrep -q -- '^(-h|--help)'` && help && exit 0
 
 DBUS_NAME=org.minidweeb.unagi
 DBUS_OBJECT_PATH=/org/minidweeb/unagi
@@ -29,13 +36,5 @@ DBUS_OBJECT_PATH=/org/minidweeb/unagi
 #     exit Expose
 sleep 0.2
 
-OUTPUT=$(dbus-send --session --type=method_call --print-reply --dest="$DBUS_NAME" \
-    "${DBUS_OBJECT_PATH}" "${DBUS_NAME}.$1")
-
-RET=$?
-if test $RET != 0
-then
-    echo $OUTPUT
-fi
-
-exit $RET
+dbus-send --session --type=method_call --print-reply --dest="$DBUS_NAME" \
+    "${DBUS_OBJECT_PATH}" "${DBUS_NAME}.$1" > /dev/null

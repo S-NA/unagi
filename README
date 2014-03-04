@@ -25,6 +25,13 @@ following command from the source directory:
 
 $ ./src/unagi  -r rendering/.libs/ -p plugins/.libs/ -c conf/
 
+Once Unagi has been installed and  started, you can also send messages
+to Unagi message bus (D-Bus)  through `unagi-client' wrapper.  You can
+see available commands  by typing the following  command (available in
+`src/' directory from the source tree):
+
+$ unagi-client --help
+
 Awesome configuration for windows opacity
 =========================================
 
@@ -70,10 +77,9 @@ configuration  file.   Note that  the  keys  names  are XKB  ones  (as
 returned for  example by `xmodmap  -pke') and  that at the  moment you
 cannot specify any modifiers though.
 
-You can start Expose (also available in `src/' directory of the source
-tree)  with  the  following  commands  (and  then  use  the  mouse  or
-keybindings defined  in the configuration  file to select  or navigate
-between windows):
+You can  start Expose with  the following  commands (and then  use the
+mouse or  keybindings defined in  the configuration file to  select or
+navigate between windows):
 
 $ unagi-client plugin.expose.enter
 
