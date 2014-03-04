@@ -549,7 +549,6 @@ _expose_create_slots(_expose_crtc_window_slots_t *crtc_slots)
   const uint16_t strip_height = (uint16_t)
     (crtc_slots->crtc->height / crtc_slots->nstrips);
 
-  /* The number of windows per strip depends */
   crtc_slots->nwindows_per_strip = (unsigned int)
     ceilf((float) crtc_slots->nwindows / (float) crtc_slots->nstrips);
 
@@ -652,56 +651,6 @@ _expose_assign_windows_to_slots(_expose_crtc_window_slots_t *crtc_slots)
 	}
 
       windows[window_n_nearest].window = NULL;
-    }
-
-  /** Adjust slot width according to the window size
-   * \todo Should also handle the window resize to optimize slot width
-   */
-  for(uint32_t slot_n = 0;
-      slot_n < crtc_slots->nwindows;
-      slot_n += crtc_slots->nwindows_per_strip)
-    {
-      /* Number of spare pixels */
-      unsigned int slot_spare_pixels = 0;
-      /* Number of slots to extend */
-      unsigned int slots_to_extend_n = 0;
-
-      for(uint32_t window_strip_n = 0;
-          window_strip_n < crtc_slots->nwindows_per_strip;
-	  window_strip_n++)
-	{
-	  /* Set the slot width to the window one if the window is smaller */
-	  if(window_width_with_border(slots[window_strip_n].window->geometry) <
-	     slots[window_strip_n].extents.width)
-	    {
-	      slot_spare_pixels += (unsigned int)
-		(slots[window_strip_n].extents.width -
-		 window_width_with_border(slots[window_strip_n].window->geometry));
-
-	      slots[window_strip_n].extents.width = window_width_with_border(slots[window_strip_n].window->geometry);
-	      slots[window_strip_n].extents.x = (int16_t) (slots[window_strip_n].extents.x + (int16_t) slot_spare_pixels);
-	    }
-	  /* Don't do anything if the window is of the same size */
-	  else if(window_width_with_border(slots[window_strip_n].window->geometry) ==
-		  slots[window_strip_n].extents.width)
-	    continue;
-	  /* Number of slots which are going to be extended */
-	  else
-	    slots_to_extend_n++;
-	}
-
-      /* If there is no slot to extend, don't do anything */
-      if(slots_to_extend_n <= 1)
-	continue;
-
-      uint16_t spare_pixels_per_slot = (uint16_t) (slot_spare_pixels / slots_to_extend_n);
-
-      for(uint32_t window_strip_n = 0;
-          window_strip_n < crtc_slots->nwindows_per_strip;
-	  window_strip_n++)
-	if(window_width_with_border(slots[window_strip_n].window->geometry) >
-	   slots[window_strip_n].extents.width)
-	  slots[window_strip_n].extents.width = (uint16_t) (slots[window_strip_n].extents.width + spare_pixels_per_slot);
     }
 }
 
