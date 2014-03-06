@@ -476,7 +476,6 @@ event_handle_configure_notify(xcb_configure_notify_event_t *event)
   else
     is_not_visible = true;
 
-  /* Update geometry */
   window->geometry->x = event->x;
   window->geometry->y = event->y;
 
@@ -491,7 +490,6 @@ event_handle_configure_notify(xcb_configure_notify_event_t *event)
       window->geometry->border_width != event->border_width))
     update_pixmap = true;
 
-  /* Update size and border width */
   window->geometry->width = event->width;
   window->geometry->height = event->height;
   window->geometry->border_width = event->border_width;
@@ -508,12 +506,14 @@ event_handle_configure_notify(xcb_configure_notify_event_t *event)
         {
           unagi_window_free_pixmap(window);
           window->pixmap = unagi_window_get_pixmap(window);
-          unagi_display_add_damaged_region(&window->region, false);
-          window->damaged_ratio = 1.0;
         }
+
+      /* Whatever happens (restack/resizing/moving Windows), this
+         should be added to damaged area... */
+      unagi_display_add_damaged_region(&window->region, false);
+      window->damaged_ratio = 1.0;
     }
 
-  /* Restack the window */
   unagi_window_restack(window, event->above_sibling);
 
   UNAGI_PLUGINS_EVENT_HANDLE(event, configure, window);
