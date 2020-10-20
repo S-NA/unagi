@@ -418,7 +418,7 @@ event_handle_circulate_notify(xcb_circulate_notify_event_t *event)
 	  windows_tail = windows_tail->next)
 	;
 
-      unagi_window_restack(window, windows_tail->id);
+      if (windows_tail != NULL) unagi_window_restack(window, windows_tail->id);
     }
 
   UNAGI_PLUGINS_EVENT_HANDLE(event, circulate, window);
