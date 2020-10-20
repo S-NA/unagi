@@ -169,7 +169,7 @@ opacity_window_manage_existing(const int nwindows,
 	  _opacity_windows = _opacity_window_new(windows[nwindow]);
 	  opacity_windows_tail = _opacity_windows;
 	}
-      else
+      else if (NULL != opacity_windows_tail)
 	{
 	  opacity_windows_tail->next = _opacity_window_new(windows[nwindow]);
 	  opacity_windows_tail = opacity_windows_tail->next;
