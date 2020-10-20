@@ -572,7 +572,7 @@ _expose_create_slots(_expose_crtc_window_slots_t *crtc_slots)
          crtc_slots->nwindows_per_strip : crtc_slots->nwindows - slot_n);
 
       const uint16_t slot_width = (uint16_t)
-        (crtc_slots->crtc->width / strip_slots_n);
+        (crtc_slots->crtc->width / (strip_slots_n != 0 ? strip_slots_n : crtc_slots->crtc->width));
 
       /* Now create the slots associated to this strip */
       for(unsigned int strip_slot = 0; strip_slot < strip_slots_n; strip_slot++)
