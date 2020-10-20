@@ -167,9 +167,13 @@ util_itree_balance(unagi_util_itree_t *node)
 {
   int left, right;
 
-  left = util_itree_height(node->left);
-  right = util_itree_height(node->right);
-  return left - right;
+  if (NULL != node) {
+    left = util_itree_height(node->left);
+    right = util_itree_height(node->right);
+    return left - right;
+  } else {
+    return 0;
+  }
 }
 
 /** Fix the height value of a node */
