@@ -141,6 +141,7 @@ _unagi_parse_configuration_file(void)
   if(cfg_parse(globalconf.cfg, fname_path) != CFG_SUCCESS)
     {
       free(fname_path);
+      fname_path = NULL; /* silence erroneous double-free warn */
       unagi_fatal("Can't parse configuration file");
     }
 

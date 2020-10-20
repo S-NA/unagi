@@ -285,6 +285,7 @@ _expose_parse_configuration(void)
   if(cfg_parse(_expose_global.cfg, fname_path) != CFG_SUCCESS)
     {
       free(fname_path);
+      fname_path = NULL; /* silence erroneous double-free warn */
       unagi_fatal("Can't parse configuration file");
     }
 

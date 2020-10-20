@@ -164,6 +164,7 @@ unagi_display_init_extensions_finalise(void)
   if(!composite_version_reply || composite_version_reply->minor_version < 2)
     {
       free(composite_version_reply);
+      composite_version_reply = NULL; /* silence erroneous double-free warn */
       unagi_fatal("Need Composite extension 0.2 at least");
     }
 
@@ -192,6 +193,7 @@ unagi_display_init_extensions_finalise(void)
   if(!xfixes_version_reply || xfixes_version_reply->major_version < 2)
     {
       free(xfixes_version_reply);
+      xfixes_version_reply = NULL; /* silence erroneous double-free warn */
       unagi_fatal("Need XFixes extension 2.0 at least");
     }
 
